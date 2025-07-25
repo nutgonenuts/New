@@ -34,7 +34,3 @@ jobs:
           fi
           wget -q $DRIVER_URL -O chromedriver.zip
           unzip chromedriver.zip
-          sudo mv chromedriver /usr/local/bin/
-          rm chromedriver.zip
-
-      - name
