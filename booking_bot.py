@@ -4,6 +4,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
+import os
+
+# Create screenshots directory
+os.makedirs("screenshots", exist_ok=True)
 
 options = Options()
 options.add_argument("--no-sandbox")
@@ -14,30 +18,26 @@ driver = webdriver.Chrome(options=options)
 
 try:
     driver.get("YOUR_BOOKING_PAGE_URL")
-    print("Page loaded.")
+    driver.save_screenshot("screenshots/page_loaded.png")
+    print("Saved screenshot: page_loaded.png")
 
-    # Click the first RESERVE button
+    # Click first RESERVE button
     reserve_button = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'RESERVE')]"))
     )
     reserve_button.click()
-    print("Clicked first RESERVE button.")
+    time.sleep(2)
+    driver.save_screenshot("screenshots/modal_opened.png")
+    print("Saved screenshot: modal_opened.png")
 
-    # Wait to ensure modal is open
-    time.sleep(3)
-
-    # Save screenshot for debugging
-    driver.save_screenshot("modal_debug.png")
-    print("Saved modal screenshot.")
-
-    # Click the modal RESERVE button using JS (more reliable)
-    modal_reserve_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'RESERVE')]"))
+    # Click modal RESERVE button
+    modal_reserve_button = WebDriverWait(driver, 15).until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'RESERVE')]"))
     )
     driver.execute_script("arguments[0].click();", modal_reserve_button)
-    print("Clicked modal RESERVE button.")
-
-    time.sleep(3)
+    time.sleep(2)
+    driver.save_screenshot("screenshots/after_booking.png")
+    print("Saved screenshot: after_booking.png")
 
 finally:
     driver.quit()
