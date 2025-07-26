@@ -15,7 +15,7 @@ load_dotenv()
 # --- Setup Chrome/Driver ---
 def init_driver():
     print("[DEBUG] Installing matching ChromeDriver...")
-    chromedriver_autoinstaller.install()
+    chromedriver_autoinstaller.install()  # Should match Chrome 138.0.7204.157
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -54,9 +54,12 @@ def safe_find(driver, by, value, timeout=20):
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
-    time.sleep(20)  # Increased to 20 seconds for JS rendering
-    driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
-    driver.execute_script("document.querySelector('form') || document.body.innerHTML += '<style>form { display: block !important; }</style>';")  # Force form visibility
+    time.sleep(25)  # Increased to 25 seconds for JS rendering with new Chrome
+    form = driver.execute_script("return document.querySelector('form');")
+    if form:
+        driver.execute_script("arguments[0].style.display = 'block';", form)
+    else:
+        driver.execute_script("document.body.innerHTML += '<style>form { display: block !important; }</style>';")
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "form")))  # Wait for form
     driver.save_screenshot("screenshots/step_home.png")
 
@@ -129,9 +132,9 @@ def try_login(driver, email, password):
 def book_parking(driver):
     try:
         # Wait longer and scroll to ensure dashboard renders
-        time.sleep(30)  # Increased to 30 seconds
+        time.sleep(30)  # Keep at 30 seconds
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        driver.execute_script("window.scrollTo(0, 0);")  # Scroll back to top to ensure visibility
+        driver.execute_script("window.scrollTo(0, 0);")  # Scroll back to top
         driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
         driver.save_screenshot("screenshots/step_dashboard.png")
 
