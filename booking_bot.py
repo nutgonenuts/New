@@ -23,6 +23,7 @@ def init_driver():
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-gpu")  # Improves headless rendering
     chrome_options.add_argument("--start-maximized")  # Ensures full viewport
+    chrome_options.add_argument("--enable-javascript")  # Explicitly enable JS
     try:
         driver = webdriver.Chrome(options=chrome_options)
         print("[DEBUG] Chrome started successfully.")
@@ -53,9 +54,10 @@ def safe_find(driver, by, value, timeout=20):
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
-    time.sleep(15)  # Increased to 15 seconds for JS rendering
+    time.sleep(20)  # Increased to 20 seconds for JS rendering
     driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
-    driver.execute_script("document.querySelector('form').style.display = 'block';")  # Force form visibility
+    driver.execute_script("document.querySelector('form') || document.body.innerHTML += '<style>form { display: block !important; }</style>';")  # Force form visibility
+    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "form")))  # Wait for form
     driver.save_screenshot("screenshots/step_home.png")
 
     email_locators = [
@@ -63,21 +65,21 @@ def try_login(driver, email, password):
         (By.CLASS_NAME, "form-control-sm md-input"),
         (By.XPATH, "//input[@type='email']"),
         (By.XPATH, "//input[contains(@class, 'md-input') and @type='email']"),  # Fallback
-        (By.XPATH, "//input[@name='email']")  # Additional fallback
+        (By.XPATH, "//input[@name='email' or @id='email']")  # Additional fallback
     ]
     pass_locators = [
         (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
         (By.CLASS_NAME, "form-control-sm md-input"),
         (By.XPATH, "//input[@type='password']"),
         (By.XPATH, "//input[contains(@class, 'md-input') and @type='password']"),  # Fallback
-        (By.XPATH, "//input[@name='password']")  # Additional fallback
+        (By.XPATH, "//input[@name='password' or @id='password']")  # Additional fallback
     ]
     login_button_locators = [
         (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
         (By.CLASS_NAME, "btn btn-block md-raised primary"),
         (By.XPATH, "//button[@type='button']"),
         (By.XPATH, "//button[contains(@class, 'md-btn') and contains(text(), 'LOG IN')]"),  # Fallback
-        (By.XPATH, "//button[@type='submit']")  # Additional fallback
+        (By.XPATH, "//button[@type='submit' or contains(@class, 'login')]")  # Additional fallback
     ]
 
     max_attempts = 3
@@ -127,13 +129,14 @@ def try_login(driver, email, password):
 def book_parking(driver):
     try:
         # Wait longer and scroll to ensure dashboard renders
-        time.sleep(25)  # Keep at 25 seconds
+        time.sleep(30)  # Increased to 30 seconds
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        driver.execute_script("window.scrollTo(0, 0);")  # Scroll back to top to ensure visibility
         driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
         driver.save_screenshot("screenshots/step_dashboard.png")
 
-        # XPath relative to Sunday span
-        reserve_button_xpath = "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/parent::div//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
+        # Flexible XPath relative to Sunday span
+        reserve_button_xpath = "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/ancestor::div[contains(@class, 'r-t lter-2')]/descendant::button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
         reserve_button = safe_find(driver, By.XPATH, reserve_button_xpath)
         if not reserve_button:
             # Fallback to CSS selector
@@ -141,7 +144,7 @@ def book_parking(driver):
             if not reserve_button:
                 print("[ERROR] Reserve button for Sunday not found.")
                 # Check for disabled button
-                disabled_button = driver.find_elements(By.XPATH, "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/parent::div//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve') and @disabled]")
+                disabled_button = driver.find_elements(By.XPATH, "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/ancestor::div[contains(@class, 'r-t lter-2')]/descendant::button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve') and @disabled]")
                 if disabled_button:
                     print("[INFO] Reserve button for Sunday is disabled (no spaces available).")
                 driver.save_screenshot("screenshots/step_reserve_not_found.png")
