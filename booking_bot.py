@@ -79,7 +79,7 @@ def try_login(driver, email, password):
 # --- Book parking space ---
 def book_parking(driver, booking_date):
     try:
-        # Navigate to booking section (update selector based on dashboard)
+        # Navigate to booking section
         book_button = safe_find(driver, By.XPATH, "//a[contains(text(), 'Book Parking')] | //button[contains(text(), 'Book Now')]")
         if not book_button:
             print("[ERROR] Booking section not found.")
@@ -90,7 +90,7 @@ def book_parking(driver, booking_date):
         print("[DEBUG] Navigated to booking page.")
         driver.save_screenshot("screenshots/step_booking_page.png")
 
-        # Select date (update selector and format based on date picker)
+        # Select date
         date_picker = safe_find(driver, By.ID, "datePicker") or safe_find(driver, By.CLASS_NAME, "date-input")
         if not date_picker:
             print("[ERROR] Date picker not found.")
@@ -98,12 +98,12 @@ def book_parking(driver, booking_date):
             return False
 
         date_picker.clear()
-        date_picker.send_keys(booking_date)  # e.g., "2025-07-27" for YYYY-MM-DD
+        date_picker.send_keys(booking_date)
         print(f"[DEBUG] Selected date: {booking_date}")
         driver.save_screenshot("screenshots/step_date_selected.png")
 
-        # Find and book the first available space (update selector)
-        book_space_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'Book') or contains(text(), 'Reserve')]")
+        # Find and book the first available space (update this locator)
+        book_space_button = safe_find(driver, By.ID, "reserve-btn")  # Placeholder - replace with actual ID or XPath
         if not book_space_button:
             print("[ERROR] No available spaces or book button found.")
             driver.save_screenshot("screenshots/step_no_spaces.png")
@@ -128,7 +128,7 @@ def main():
         email, password = get_credentials()
         if try_login(driver, email, password):
             # Book for tomorrow (Sunday, July 27, 2025)
-            booking_date = "2025-07-27"  # Adjusted to YYYY-MM-DD, common for date inputs
+            booking_date = "2025-07-27"  # YYYY-MM-DD format
             if book_parking(driver, booking_date):
                 print("[SUCCESS] Booking completed for", booking_date)
             else:
