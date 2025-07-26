@@ -1,53 +1,53 @@
-import os
-import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.options import Options
+name: booking
 
-EMAIL = os.getenv("EMAIL")
-PASSWORD = os.getenv("PASSWORD")
+on:
+  workflow_dispatch:
 
-def init_driver():
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-def login(driver):
-    driver.get("https://app.parkalot.io")
-    print("[DEBUG] Opening Parkalot website...")
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    if not EMAIL or not PASSWORD:
-        print("[DEBUG] Email set? NO")
-        print("[DEBUG] Password set? NO")
-        raise Exception("EMAIL or PASSWORD is not set. Exiting.")
-    else:
-        print("[DEBUG] Email set? YES")
-        print("[DEBUG] Password set? YES")
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || echo "No requirements.txt found"
+          pip install selenium webdriver-manager
 
-    try:
-        email_input = driver.find_element(By.NAME, "email")
-        password_input = driver.find_element(By.NAME, "password")
-        email_input.send_keys(EMAIL)
-        password_input.send_keys(PASSWORD)
-        driver.find_element(By.XPATH, "//button[contains(text(), 'LOG IN')]").click()
-        time.sleep(5)
-        print("[DEBUG] Login attempted.")
-    except Exception as e:
-        raise Exception(f"Login failed: {str(e)}")
+      - name: Install Chrome and ChromeDriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip xvfb
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+' | head -1 || echo "138")
+          echo "Detected Chrome major version: $CHROME_VERSION"
+          wget -q "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION" -O LATEST_RELEASE
+          DRIVER_VERSION=$(cat LATEST_RELEASE)
+          wget -q "https://chromedriver.storage.googleapis.com/$DRIVER_VERSION/chromedriver_linux64.zip" -O chromedriver.zip
+          unzip chromedriver.zip -d /usr/local/bin/
+          chmod +x /usr/local/bin/chromedriver
 
-def main():
-    driver = init_driver()
-    try:
-        login(driver)
-        print("[DEBUG] Successfully reached login process.")
-        driver.save_screenshot("screenshots/step_login.png")
-    finally:
-        driver.quit()
-        print("[DEBUG] Browser closed.")
+      - name: Debug Secrets
+        run: |
+          if [ -z "${{ secrets.EMAIL }}" ]; then echo "EMAIL secret is NOT set"; else echo "EMAIL secret is set"; fi
+          if [ -z "${{ secrets.PASSWORD }}" ]; then echo "PASSWORD secret is NOT set"; else echo "PASSWORD secret is set"; fi
 
-if __name__ == "__main__":
-    main()
+      - name: Run booking bot
+        env:
+          EMAIL: ${{ secrets.EMAIL }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+        run: |
+          mkdir -p screenshots
+          python booking_bot.py
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-screenshots
+          path: screenshots/
