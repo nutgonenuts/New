@@ -53,7 +53,7 @@ def safe_find(driver, by, value, timeout=20):
 # --- Login attempt with multiple strategies ---
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
-    print("[DEBUG] Opened Parkalot website.")
+    print("[DEBUG] Opened Parkalot website. URL:", driver.current_url)
     time.sleep(50)  # Increased to 50 seconds for JS rendering
     form = driver.execute_script("return document.querySelector('form');")
     if form:
@@ -121,8 +121,8 @@ def try_login(driver, email, password):
         login_button.click()
 
         try:
-            WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Sunday')]")))
-            print("[DEBUG] Login successful!")
+            WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Sunday') and contains(@class, 'pull-left')]")))
+            print("[DEBUG] Login successful! URL:", driver.current_url)
             driver.save_screenshot("screenshots/step_logged_in.png")
             return True
         except TimeoutException:
@@ -132,8 +132,29 @@ def try_login(driver, email, password):
 
     # Save screenshot after all attempts if login fails
     driver.save_screenshot("screenshots/step_login_failed.png")
-    print("[DEBUG] Login validation failed, but dashboard may be reached—check screenshots.")
-    return False  # Temporary return to allow manual verification
+    print("[DEBUG] Login validation failed, but dashboard may be reached—check screenshots. URL:", driver.current_url)
+    return False
+
+# --- Check dashboard elements ---
+def check_dashboard_elements(driver):
+    print("[DEBUG] Checking dashboard elements...")
+    try:
+        sunday_element = safe_find(driver, By.XPATH, "//span[contains(text(), 'Sunday') and contains(@class, 'pull-left')]")
+        if sunday_element:
+            print("[DEBUG] 'Sunday' element found!")
+        else:
+            print("[ERROR] 'Sunday' element not found.")
+
+        reserve_button_xpath = "//div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
+        reserve_button = safe_find(driver, By.XPATH, reserve_button_xpath)
+        if reserve_button:
+            print("[DEBUG] 'RESERVE' button found!")
+        else:
+            print("[ERROR] 'RESERVE' button not found.")
+        driver.save_screenshot("screenshots/step_dashboard_check.png")
+    except Exception as e:
+        print(f"[ERROR] Dashboard check failed: {e}")
+        driver.save_screenshot("screenshots/step_dashboard_check_failed.png")
 
 # --- Main ---
 def main():
@@ -143,6 +164,7 @@ def main():
         email, password = get_credentials()
         if try_login(driver, email, password):
             print("[SUCCESS] Login completed successfully.")
+            check_dashboard_elements(driver)
         else:
             print("[FAIL] Login failed or validation issue—please verify screenshots.")
     except Exception as e:
