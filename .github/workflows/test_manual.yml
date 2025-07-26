@@ -19,32 +19,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install selenium
+          pip install selenium webdriver-manager
 
       - name: Install Chrome and ChromeDriver
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip xvfb google-chrome-stable
-          # Get Chrome version
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
-          echo "Detected Chrome version: $CHROME_VERSION"
-          # Try multiple ChromeDriver versions
-          for ver in 138.0.7204 114.0.5735; do
-            echo "Trying ChromeDriver version $ver"
-            wget -q --show-progress --progress=bar:force:noscroll \
-              "https://storage.googleapis.com/chrome-for-testing-public/$ver/linux64/chromedriver-linux64.zip" \
-              -O chromedriver.zip || continue
-            unzip -o chromedriver.zip
-            sudo mv chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
-            sudo chmod +x /usr/local/bin/chromedriver
-            rm -rf chromedriver.zip chromedriver-linux64
-            break
-          done
-          chromedriver --version
+          sudo apt-get install -y wget unzip xvfb
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+          google-chrome --version
 
       - name: Run booking bot
-        run: |
-          python booking_bot.py
+        run: python booking_bot.py
 
       - name: Upload screenshots
         if: always()
