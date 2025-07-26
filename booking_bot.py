@@ -56,19 +56,19 @@ def try_login(driver, email, password):
 
     # Updated locators based on screenshot
     email_locators = [
-        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
-        (By.CLASS_NAME, "form-control-sm md-input"),
+        (By.XPATH, "//input[@type='email' and @label='email']"),
+        (By.CLASS_NAME, "md-form-group float-label"),
         (By.XPATH, "//input[@type='email']")
     ]
     pass_locators = [
-        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
-        (By.CLASS_NAME, "form-control-sm md-input"),
+        (By.XPATH, "//input[@type='password' and @label='password']"),
+        (By.CLASS_NAME, "md-form-group float-label"),
         (By.XPATH, "//input[@type='password']")
     ]
     login_button_locators = [
         (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
-        (By.CLASS_NAME, "btn btn-block md-raised primary"),
-        (By.XPATH, "//button[@type='button']")
+        (By.CLASS_NAME, "btn primary"),
+        (By.XPATH, "//button[@type='submit']")
     ]
 
     max_attempts = 3
@@ -114,39 +114,27 @@ def try_login(driver, email, password):
     print("[FAIL] All login attempts failed.")
     return False
 
-# --- Book parking space ---
-def book_parking(driver, booking_date):
+# --- Book parking space for Sunday ---
+def book_parking(driver):
     try:
-        book_button = safe_find(driver, By.XPATH, "//a[contains(text(), 'Book Parking')] | //button[contains(text(), 'Book Now')]")
-        if not book_button:
-            print("[ERROR] Booking section not found.")
-            driver.save_screenshot("screenshots/step_booking_not_found.png")
+        # Wait for dashboard to load
+        time.sleep(5)
+        driver.save_screenshot("screenshots/step_dashboard.png")
+
+        # Find the "RESERVE" button for Sunday
+        reserve_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'titer-2') and contains(text(), 'Sunday')]//button[contains(@class, 'btn') and contains(text(), 'RESERVE')]")
+        if not reserve_button:
+            print("[ERROR] Reserve button for Sunday not found.")
+            driver.save_screenshot("screenshots/step_reserve_not_found.png")
             return False
 
-        book_button.click()
-        print("[DEBUG] Navigated to booking page.")
-        driver.save_screenshot("screenshots/step_booking_page.png")
+        reserve_button.click()
+        print("[DEBUG] Clicked Reserve for Sunday.")
+        driver.save_screenshot("screenshots/step_reserve_clicked.png")
 
-        date_picker = safe_find(driver, By.ID, "datePicker") or safe_find(driver, By.CLASS_NAME, "date-input")
-        if not date_picker:
-            print("[ERROR] Date picker not found.")
-            driver.save_screenshot("screenshots/step_date_picker_not_found.png")
-            return False
-
-        date_picker.clear()
-        date_picker.send_keys(booking_date)
-        print(f"[DEBUG] Selected date: {booking_date}")
-        driver.save_screenshot("screenshots/step_date_selected.png")
-
-        book_space_button = safe_find(driver, By.ID, "reserve-btn")  # Update this locator
-        if not book_space_button:
-            print("[ERROR] No available spaces or book button found.")
-            driver.save_screenshot("screenshots/step_no_spaces.png")
-            return False
-
-        book_space_button.click()
-        WebDriverWait(driver, 10).until(EC.alert_is_present() or EC.url_contains("confirmation"))
-        print("[DEBUG] Parking space booked!")
+        # Wait for confirmation
+        WebDriverWait(driver, 20).until(EC.alert_is_present() or EC.url_contains("confirmation") or EC.presence_of_element_located((By.XPATH, "//div[contains(text(), 'Booking Confirmed')]")))
+        print("[DEBUG] Booking confirmed!")
         driver.save_screenshot("screenshots/step_booking_confirmed.png")
         return True
 
@@ -162,9 +150,8 @@ def main():
         driver = init_driver()
         email, password = get_credentials()
         if try_login(driver, email, password):
-            booking_date = "2025-07-27"  # YYYY-MM-DD format
-            if book_parking(driver, booking_date):
-                print("[SUCCESS] Booking completed for", booking_date)
+            if book_parking(driver):
+                print("[SUCCESS] Booking completed for Sunday")
             else:
                 print("[FAIL] Booking attempt failed.")
         else:
