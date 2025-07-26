@@ -1,95 +1,84 @@
-import os
-import time
-import chromedriver_autoinstaller
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+name: Run Booking Bot
 
-# --- Setup Chrome/Driver ---
-def init_driver():
-    print("[DEBUG] Installing matching ChromeDriver...")
-    chromedriver_autoinstaller.install()
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1-5"   # Run at 9 AM Monday-Friday
 
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080")
+jobs:
+  booking:
+    runs-on: ubuntu-latest
 
-    for attempt in range(3):
-        try:
-            driver = webdriver.Chrome(options=chrome_options)
-            print("[DEBUG] Chrome started successfully.")
-            return driver
-        except Exception as e:
-            print(f"[ERROR] ChromeDriver launch failed: {e}")
-            time.sleep(3)
-    raise RuntimeError("Failed to start Chrome after 3 attempts.")
+    env:
+      EMAIL: ${{ secrets.EMAIL }}
+      PASSWORD: ${{ secrets.PASSWORD }}
 
-# --- Validate secrets ---
-def get_credentials():
-    email = os.getenv('EMAIL')
-    password = os.getenv('PASSWORD')
-    print(f"[DEBUG] EMAIL set? {'YES' if email else 'NO'}")
-    print(f"[DEBUG] PASSWORD set? {'YES' if password else 'NO'}")
-    if not email or not password:
-        raise ValueError("EMAIL or PASSWORD secret not set!")
-    return email, password
+    steps:
+      # --- STEP 1: Checkout Repository ---
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-# --- Safe element finder ---
-def safe_find(driver, by, value, timeout=10):
-    try:
-        return WebDriverWait(driver, timeout).until(EC.presence_of_element_located((by, value)))
-    except TimeoutException:
-        return None
+      # --- STEP 2: Set Up Python ---
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-# --- Login attempt ---
-def try_login(driver, email, password):
-    driver.get("https://app.parkalot.io/login")
-    print("[DEBUG] Opened Parkalot website.")
-    driver.save_screenshot("step_home.png")
+      # --- STEP 3: Install Dependencies ---
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install selenium webdriver-manager chromedriver-autoinstaller
 
-    email_field = safe_find(driver, By.NAME, "email")
-    pass_field = safe_find(driver, By.NAME, "password")
-    login_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'LOG IN')]")
+      # --- STEP 4: Install Chrome & ChromeDriver ---
+      - name: Install Chrome and ChromeDriver
+        run: |
+          echo "[INFO] Installing Chrome..."
+          sudo apt-get update
+          sudo apt-get install -y wget unzip xvfb
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb || true
 
-    if not email_field or not pass_field or not login_button:
-        print("[ERROR] Login fields not found.")
-        driver.save_screenshot("step_error_no_fields.png")
-        return False
+          echo "[INFO] Detecting Chrome version..."
+          CHROME_VERSION=$(google-chrome --version | grep -oP '[0-9]+')
+          echo "Detected Chrome major version: $CHROME_VERSION"
 
-    email_field.send_keys(email)
-    pass_field.send_keys(password)
-    login_button.click()
-    time.sleep(5)
+          echo "[INFO] Downloading matching ChromeDriver..."
+          URL=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json | \
+                jq -r --arg v "$CHROME_VERSION" '.versions[] | select(.version | startswith($v+".")) | .downloads.chromedriver[] | select(.platform=="linux64") | .url' | head -n 1)
+          if [ -z "$URL" ]; then
+            echo "[ERROR] Failed to find ChromeDriver for version $CHROME_VERSION"
+            exit 1
+          fi
+          wget -O chromedriver.zip "$URL"
+          unzip chromedriver.zip
+          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
+          chromedriver --version
 
-    if "dashboard" in driver.current_url.lower():
-        print("[DEBUG] Login successful!")
-        driver.save_screenshot("step_logged_in.png")
-        return True
-    else:
-        print("[ERROR] Login failed.")
-        driver.save_screenshot("step_login_failed.png")
-        return False
+      # --- STEP 5: Debug Secrets (Mask Output) ---
+      - name: Debug Secrets
+        run: |
+          if [ -z "$EMAIL" ]; then
+            echo "::error::EMAIL is not set!"
+            exit 1
+          fi
+          if [ -z "$PASSWORD" ]; then
+            echo "::error::PASSWORD is not set!"
+            exit 1
+          fi
+          echo "[DEBUG] EMAIL and PASSWORD are set (hidden)."
 
-# --- Main ---
-def main():
-    driver = init_driver()
-    email, password = get_credentials()
+      # --- STEP 6: Run Booking Bot ---
+      - name: Run booking bot
+        run: |
+          mkdir -p screenshots
+          python booking_bot.py || echo "Booking bot failed."
 
-    for attempt in range(3):
-        if try_login(driver, email, password):
-            break
-        else:
-            print(f"[WARN] Login attempt {attempt+1} failed. Retrying...")
-            time.sleep(3)
-    else:
-        print("[FATAL] Login failed after 3 attempts.")
-
-    driver.quit()
-
-if __name__ == "__main__":
-    main()
+      # --- STEP 7: Upload Screenshots ---
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-screenshots
+          path: screenshots/
+          if-no-files-found: warn
