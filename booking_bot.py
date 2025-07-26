@@ -54,7 +54,6 @@ def try_login(driver, email, password):
     time.sleep(5)  # Wait for JS to load
     driver.save_screenshot("screenshots/step_home.png")
 
-    # Updated locators based on screenshot
     email_locators = [
         (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
         (By.CLASS_NAME, "form-control-sm md-input"),
@@ -117,14 +116,19 @@ def try_login(driver, email, password):
 # --- Book parking space for Sunday ---
 def book_parking(driver):
     try:
-        # Wait for dashboard to load
-        time.sleep(5)
+        # Wait longer for dashboard to load and ensure JS renders
+        time.sleep(15)  # Increased to 15 seconds
+        driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
         driver.save_screenshot("screenshots/step_dashboard.png")
 
-        # Find the "RESERVE" button for Sunday
-        reserve_button = safe_find(driver, By.XPATH, "//div[contains(text(), 'Sunday')]//button[contains(text(), 'RESERVE')]")
+        # More flexible XPath for "RESERVE" button under Sunday card
+        reserve_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'titer-2') and contains(., 'Sunday')]//button[contains(@class, 'btn') and contains(text(), 'RESERVE') and not(@disabled)]")
         if not reserve_button:
-            print("[ERROR] Reserve button for Sunday not found.")
+            print("[ERROR] Reserve button for Sunday not found or disabled.")
+            # Check for disabled button
+            disabled_button = driver.find_elements(By.XPATH, "//div[contains(@class, 'titer-2') and contains(., 'Sunday')]//button[contains(@class, 'btn') and contains(text(), 'RESERVE') and @disabled]")
+            if disabled_button:
+                print("[INFO] Reserve button for Sunday is disabled (no spaces available).")
             driver.save_screenshot("screenshots/step_reserve_not_found.png")
             return False
 
@@ -132,11 +136,11 @@ def book_parking(driver):
         print("[DEBUG] Clicked Reserve for Sunday.")
         driver.save_screenshot("screenshots/step_reserve_clicked.png")
 
-        # Wait for confirmation (e.g., alert, URL change, or success message)
+        # Wait for confirmation with multiple conditions
         WebDriverWait(driver, 20).until(
             EC.alert_is_present() or
             EC.url_contains("confirmation") or
-            EC.presence_of_element_located((By.XPATH, "//div[contains(text(), 'Booking Confirmed')]"))
+            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed')]"))
         )
         print("[DEBUG] Booking confirmed!")
         driver.save_screenshot("screenshots/step_booking_confirmed.png")
