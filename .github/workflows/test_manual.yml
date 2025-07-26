@@ -22,15 +22,22 @@ jobs:
 
       - name: Install Chrome and ChromeDriver
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget unzip google-chrome-stable
-          CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d '.' -f 1)
-          DRIVER_URL="https://chromedriver.storage.googleapis.com/${CHROME_VERSION}.0.0/chromedriver_linux64.zip"
-          if curl --output /dev/null --silent --head --fail "$DRIVER_URL"; then
-            echo "Using ChromeDriver version $CHROME_VERSION"
-          else
-            echo "ChromeDriver $CHROME_VERSION not found. Using fallback 114."
-            DRIVER_URL="https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip"
-          fi
-          wget -q $DRIVER_URL -O chromedriver.zip
-          unzip chromedriver.zip
+          sudo apt update
+          sudo apt install -y wget unzip
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+          LATEST=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE)
+          wget https://chromedriver.storage.googleapis.com/$LATEST/chromedriver_linux64.zip
+          unzip chromedriver_linux64.zip
+          sudo mv chromedriver /usr/local/bin/
+          chromedriver --version
+          google-chrome --version
+
+      - name: Run booking bot
+        run: python booking_bot.py
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-screenshots
+          path: "*.png"
