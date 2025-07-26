@@ -1,64 +1,53 @@
-name: booking
+import os
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
 
-on:
-  workflow_dispatch:
+EMAIL = os.getenv("EMAIL")
+PASSWORD = os.getenv("PASSWORD")
 
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
+def init_driver():
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+def login(driver):
+    driver.get("https://app.parkalot.io")
+    print("[DEBUG] Opening Parkalot website...")
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+    if not EMAIL or not PASSWORD:
+        print("[DEBUG] Email set? NO")
+        print("[DEBUG] Password set? NO")
+        raise Exception("EMAIL or PASSWORD is not set. Exiting.")
+    else:
+        print("[DEBUG] Email set? YES")
+        print("[DEBUG] Password set? YES")
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install selenium webdriver-manager
+    try:
+        email_input = driver.find_element(By.NAME, "email")
+        password_input = driver.find_element(By.NAME, "password")
+        email_input.send_keys(EMAIL)
+        password_input.send_keys(PASSWORD)
+        driver.find_element(By.XPATH, "//button[contains(text(), 'LOG IN')]").click()
+        time.sleep(5)
+        print("[DEBUG] Login attempted.")
+    except Exception as e:
+        raise Exception(f"Login failed: {str(e)}")
 
-      - name: Install Chrome and matching ChromeDriver
-        run: |
-          set -e
-          sudo apt update
-          sudo apt install -y wget unzip xvfb google-chrome-stable
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+' | head -1)
-          echo "Detected Chrome major version: $CHROME_VERSION"
+def main():
+    driver = init_driver()
+    try:
+        login(driver)
+        print("[DEBUG] Successfully reached login process.")
+        driver.save_screenshot("screenshots/step_login.png")
+    finally:
+        driver.quit()
+        print("[DEBUG] Browser closed.")
 
-          # Function to download matching chromedriver
-          download_driver() {
-            DRIVER_VERSION=$1
-            echo "Attempting ChromeDriver version: $DRIVER_VERSION"
-            wget -q --continue -P /tmp "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${DRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
-            && unzip -o /tmp/chromedriver-linux64.zip -d /tmp/ \
-            && sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
-            && sudo chmod +x /usr/local/bin/chromedriver \
-            && return 0
-            return 1
-          }
-
-          # Try exact version
-          if ! download_driver "${CHROME_VERSION}.0.7204.168"; then
-            echo "Exact match not found. Trying ChromeDriver 114..."
-            download_driver "114.0.5735.90" || (echo "No ChromeDriver worked!" && exit 1)
-          fi
-
-          chromedriver --version
-
-      - name: Run booking bot
-        env:
-          EMAIL: ${{ secrets.EMAIL }}
-          PASSWORD: ${{ secrets.PASSWORD }}
-        run: |
-          mkdir -p screenshots
-          python booking_bot.py
-
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v4
-        with:
-          name: booking-screenshots
-          path: screenshots/
+if __name__ == "__main__":
+    main()
