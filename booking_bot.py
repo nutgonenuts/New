@@ -48,4 +48,10 @@ def safe_find(driver, by, value, timeout=10):
 
 # --- Login attempt ---
 def try_login(driver, email, password):
-    driver.get("
+    driver.get("https://app.parkalot.io/login")
+    print("[DEBUG] Opened Parkalot website.")
+    driver.save_screenshot("screenshots/step_home.png")
+
+    email_field = safe_find(driver, By.NAME, "email")
+    pass_field = safe_find(driver, By.NAME, "password")
+    login_button
