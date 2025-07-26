@@ -1,9 +1,9 @@
 name: Run Booking Bot
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Allow manual triggers
   schedule:
-    - cron: "0 9 * * 1-5"   # Run at 9 AM Monday-Friday
+    - cron: "0 9 * * 1-5"  # Run at 9 AM Monday-Friday (BST)
 
 jobs:
   booking:
@@ -28,35 +28,9 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install selenium webdriver-manager chromedriver-autoinstaller
+          pip install selenium webdriver-manager chromedriver-autoinstaller python-dotenv
 
-      # --- STEP 4: Install Chrome & ChromeDriver ---
-      - name: Install Chrome and ChromeDriver
-        run: |
-          echo "[INFO] Installing Chrome..."
-          sudo apt-get update
-          sudo apt-get install -y wget unzip xvfb
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt install -y ./google-chrome-stable_current_amd64.deb || true
-
-          echo "[INFO] Detecting Chrome version..."
-          CHROME_VERSION=$(google-chrome --version | grep -oP '[0-9]+')
-          echo "Detected Chrome major version: $CHROME_VERSION"
-
-          echo "[INFO] Downloading matching ChromeDriver..."
-          URL=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json | \
-                jq -r --arg v "$CHROME_VERSION" '.versions[] | select(.version | startswith($v+".")) | .downloads.chromedriver[] | select(.platform=="linux64") | .url' | head -n 1)
-          if [ -z "$URL" ]; then
-            echo "[ERROR] Failed to find ChromeDriver for version $CHROME_VERSION"
-            exit 1
-          fi
-          wget -O chromedriver.zip "$URL"
-          unzip chromedriver.zip
-          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
-          sudo chmod +x /usr/local/bin/chromedriver
-          chromedriver --version
-
-      # --- STEP 5: Debug Secrets (Mask Output) ---
+      # --- STEP 4: Debug Secrets ---
       - name: Debug Secrets
         run: |
           if [ -z "$EMAIL" ]; then
@@ -69,13 +43,13 @@ jobs:
           fi
           echo "[DEBUG] EMAIL and PASSWORD are set (hidden)."
 
-      # --- STEP 6: Run Booking Bot ---
+      # --- STEP 5: Run Booking Bot ---
       - name: Run booking bot
         run: |
           mkdir -p screenshots
           python booking_bot.py || echo "Booking bot failed."
 
-      # --- STEP 7: Upload Screenshots ---
+      # --- STEP 6: Upload Screenshots ---
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
