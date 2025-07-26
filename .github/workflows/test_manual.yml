@@ -20,16 +20,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install selenium
 
-      - name: Install Chrome and ChromeDriver
+      - name: Install Chrome and Try Multiple ChromeDrivers
         run: |
           sudo apt update
           sudo apt install -y wget unzip
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo apt install -y ./google-chrome-stable_current_amd64.deb
-          LATEST=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE)
-          wget https://chromedriver.storage.googleapis.com/$LATEST/chromedriver_linux64.zip
-          unzip chromedriver_linux64.zip
-          sudo mv chromedriver /usr/local/bin/
+          
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+          echo "Installed Chrome version: $CHROME_VERSION"
+          
+          DRIVER_BASE="https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing"
+          
+          for VERSION in $CHROME_VERSION 138.0.0 137.0.0 136.0.0; do
+            echo "Trying ChromeDriver version $VERSION"
+            if curl --output /dev/null --silent --head --fail "$DRIVER_BASE/$VERSION/linux64/chromedriver-linux64.zip"; then
+              wget "$DRIVER_BASE/$VERSION/linux64/chromedriver-linux64.zip" -O chromedriver.zip
+              unzip chromedriver.zip
+              sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
+              break
+            fi
+          done
+
           chromedriver --version
           google-chrome --version
 
