@@ -21,6 +21,7 @@ def init_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--disable-gpu")  # Improves headless rendering
     try:
         driver = webdriver.Chrome(options=chrome_options)
         print("[DEBUG] Chrome started successfully.")
@@ -47,71 +48,36 @@ def safe_find(driver, by, value, timeout=20):
         print(f"[ERROR] Element not visible: {value}")
         return None
 
-# --- Login attempt with multiple strategies ---
+# --- Login attempt with single strategy ---
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
-    time.sleep(5)  # Wait for JS to load
+    time.sleep(10)  # Increased to 10 seconds for JS rendering
+    driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
     driver.save_screenshot("screenshots/step_home.png")
 
-    email_locators = [
-        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
-        (By.CLASS_NAME, "form-control-sm md-input"),
-        (By.XPATH, "//input[@type='email']")
-    ]
-    pass_locators = [
-        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
-        (By.CLASS_NAME, "form-control-sm md-input"),
-        (By.XPATH, "//input[@type='password']")
-    ]
-    login_button_locators = [
-        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
-        (By.CLASS_NAME, "btn btn-block md-raised primary"),
-        (By.XPATH, "//button[@type='button']")
-    ]
+    email_field = safe_find(driver, By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']")
+    pass_field = safe_find(driver, By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']")
+    login_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'LOG IN')]")
 
-    max_attempts = 3
-    for attempt in range(max_attempts):
-        print(f"[DEBUG] Login attempt {attempt + 1}/{max_attempts}")
-        email_field = None
-        pass_field = None
-        login_button = None
+    if not email_field or not pass_field or not login_button:
+        print("[ERROR] Login fields not found.")
+        driver.save_screenshot("screenshots/step_error_no_fields.png")
+        return False
 
-        for by, value in email_locators:
-            email_field = safe_find(driver, by, value)
-            if email_field:
-                break
-        for by, value in pass_locators:
-            pass_field = safe_find(driver, by, value)
-            if pass_field:
-                break
-        for by, value in login_button_locators:
-            login_button = safe_find(driver, by, value)
-            if login_button:
-                break
+    email_field.send_keys(email)
+    pass_field.send_keys(password)
+    login_button.click()
 
-        if not email_field or not pass_field or not login_button:
-            print("[ERROR] Login fields not found in attempt", attempt + 1)
-            driver.save_screenshot(f"screenshots/step_error_no_fields_attempt{attempt + 1}.png")
-            time.sleep(2)
-            continue
-
-        email_field.send_keys(email)
-        pass_field.send_keys(password)
-        login_button.click()
-
-        try:
-            WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))
-            print("[DEBUG] Login successful!")
-            driver.save_screenshot("screenshots/step_logged_in.png")
-            return True
-        except TimeoutException:
-            print("[ERROR] Login failed in attempt", attempt + 1)
-            driver.save_screenshot(f"screenshots/step_login_failed_attempt{attempt + 1}.png")
-            time.sleep(2)
-
-    print("[FAIL] All login attempts failed.")
-    return False
+    try:
+        WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))
+        print("[DEBUG] Login successful!")
+        driver.save_screenshot("screenshots/step_logged_in.png")
+        return True
+    except TimeoutException:
+        print("[ERROR] Login failed.")
+        driver.save_screenshot("screenshots/step_login_failed.png")
+        return False
 
 # --- Book parking space for Sunday ---
 def book_parking(driver):
@@ -122,16 +88,20 @@ def book_parking(driver):
         driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
         driver.save_screenshot("screenshots/step_dashboard.png")
 
-        # Precise XPath for "RESERVE" button relative to Sunday span
-        reserve_button = safe_find(driver, By.XPATH, "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/following-sibling::div//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]")
+        # XPath relative to Sunday span
+        reserve_button_xpath = "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/parent::div//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
+        reserve_button = safe_find(driver, By.XPATH, reserve_button_xpath)
         if not reserve_button:
-            print("[ERROR] Reserve button for Sunday not found.")
-            # Check for disabled button
-            disabled_button = driver.find_elements(By.XPATH, "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/following-sibling::div//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve') and @disabled]")
-            if disabled_button:
-                print("[INFO] Reserve button for Sunday is disabled (no spaces available).")
-            driver.save_screenshot("screenshots/step_reserve_not_found.png")
-            return False
+            # Fallback to CSS selector
+            reserve_button = safe_find(driver, By.CSS_SELECTOR, "#app > div:nth-child(1) > div.app-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(1) > div:nth-child(2) > div > div > div:nth-child(2) > div.pull-right.p-a-sm > button:nth-child(3)")
+            if not reserve_button:
+                print("[ERROR] Reserve button for Sunday not found.")
+                # Check for disabled button
+                disabled_button = driver.find_elements(By.XPATH, "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/parent::div//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve') and @disabled]")
+                if disabled_button:
+                    print("[INFO] Reserve button for Sunday is disabled (no spaces available).")
+                driver.save_screenshot("screenshots/step_reserve_not_found.png")
+                return False
 
         reserve_button.click()
         print("[DEBUG] Clicked Reserve for Sunday.")
