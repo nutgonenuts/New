@@ -47,7 +47,8 @@ jobs:
       - name: Run booking bot
         run: |
           mkdir -p screenshots
-          python booking_bot.py || echo "Booking bot failed."
+          python booking_bot.py 2>&1 | tee booking_bot.log || echo "Booking bot failed."
+        continue-on-error: true
 
       # --- STEP 6: Upload Screenshots ---
       - name: Upload screenshots
@@ -56,3 +57,11 @@ jobs:
           name: booking-screenshots
           path: screenshots/
           if-no-files-found: warn
+
+      # --- STEP 7: Upload Log ---
+      - name: Upload log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: booking-bot-log
+          path: booking_bot.log
