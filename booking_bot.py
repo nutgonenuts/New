@@ -47,106 +47,57 @@ def safe_find(driver, by, value, timeout=20):
         print(f"[ERROR] Element not visible: {value}")
         return None
 
-# --- Login attempt with multiple strategies ---
+# --- Login attempt ---
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
     time.sleep(5)  # Wait for JS to load
     driver.save_screenshot("screenshots/step_home.png")
 
-    # Updated locators based on screenshot
-    email_locators = [
-        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
-        (By.CLASS_NAME, "form-control-sm md-input"),
-        (By.XPATH, "//input[@type='email']")
-    ]
-    pass_locators = [
-        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
-        (By.CLASS_NAME, "form-control-sm md-input"),
-        (By.XPATH, "//input[@type='password']")
-    ]
-    login_button_locators = [
-        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
-        (By.CLASS_NAME, "btn btn-block md-raised primary"),
-        (By.XPATH, "//button[@type='button']")
-    ]
+    email_field = safe_find(driver, By.XPATH, "//input[@type='email' and @label='email']")
+    pass_field = safe_find(driver, By.XPATH, "//input[@type='password' and @label='password']")
+    login_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'LOG IN')]")
 
-    max_attempts = 3
-    for attempt in range(max_attempts):
-        print(f"[DEBUG] Login attempt {attempt + 1}/{max_attempts}")
-        email_field = None
-        pass_field = None
-        login_button = None
+    if not email_field or not pass_field or not login_button:
+        print("[ERROR] Login fields not found.")
+        driver.save_screenshot("screenshots/step_error_no_fields.png")
+        return False
 
-        for by, value in email_locators:
-            email_field = safe_find(driver, by, value)
-            if email_field:
-                break
-        for by, value in pass_locators:
-            pass_field = safe_find(driver, by, value)
-            if pass_field:
-                break
-        for by, value in login_button_locators:
-            login_button = safe_find(driver, by, value)
-            if login_button:
-                break
+    email_field.send_keys(email)
+    pass_field.send_keys(password)
+    login_button.click()
 
-        if not email_field or not pass_field or not login_button:
-            print("[ERROR] Login fields not found in attempt", attempt + 1)
-            driver.save_screenshot(f"screenshots/step_error_no_fields_attempt{attempt + 1}.png")
-            time.sleep(2)
-            continue
-
-        email_field.send_keys(email)
-        pass_field.send_keys(password)
-        login_button.click()
-
-        try:
-            WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))
-            print("[DEBUG] Login successful!")
-            driver.save_screenshot("screenshots/step_logged_in.png")
-            return True
-        except TimeoutException:
-            print("[ERROR] Login failed in attempt", attempt + 1)
-            driver.save_screenshot(f"screenshots/step_login_failed_attempt{attempt + 1}.png")
-            time.sleep(2)
-
-    print("[FAIL] All login attempts failed.")
-    return False
-
-# --- Book parking space ---
-def book_parking(driver, booking_date):
     try:
-        book_button = safe_find(driver, By.XPATH, "//a[contains(text(), 'Book Parking')] | //button[contains(text(), 'Book Now')]")
-        if not book_button:
-            print("[ERROR] Booking section not found.")
-            driver.save_screenshot("screenshots/step_booking_not_found.png")
+        WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))
+        print("[DEBUG] Login successful!")
+        driver.save_screenshot("screenshots/step_logged_in.png")
+        return True
+    except TimeoutException:
+        print("[ERROR] Login failed.")
+        driver.save_screenshot("screenshots/step_login_failed.png")
+        return False
+
+# --- Book parking space for Sunday ---
+def book_parking(driver):
+    try:
+        # Wait for dashboard to load
+        time.sleep(5)
+        driver.save_screenshot("screenshots/step_dashboard.png")
+
+        # Find the "RESERVE" button for Sunday
+        reserve_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'row') and contains(., 'Sunday')]//button[contains(@class, 'btn') and contains(text(), 'RESERVE')]")
+        if not reserve_button:
+            print("[ERROR] Reserve button for Sunday not found.")
+            driver.save_screenshot("screenshots/step_reserve_not_found.png")
             return False
 
-        book_button.click()
-        print("[DEBUG] Navigated to booking page.")
-        driver.save_screenshot("screenshots/step_booking_page.png")
+        reserve_button.click()
+        print("[DEBUG] Clicked Reserve for Sunday.")
+        driver.save_screenshot("screenshots/step_reserve_clicked.png")
 
-        date_picker = safe_find(driver, By.ID, "datePicker") or safe_find(driver, By.CLASS_NAME, "date-input")
-        if not date_picker:
-            print("[ERROR] Date picker not found.")
-            driver.save_screenshot("screenshots/step_date_picker_not_found.png")
-            return False
-
-        date_picker.clear()
-        date_picker.send_keys(booking_date)
-        print(f"[DEBUG] Selected date: {booking_date}")
-        driver.save_screenshot("screenshots/step_date_selected.png")
-
-        book_space_button = safe_find(driver, By.ID, "reserve-btn")  # Update this locator
-        if not book_space_button:
-            print("[ERROR] No available spaces or book button found.")
-            driver.save_screenshot("screenshots/step_no_spaces.png")
-            return False
-
-        book_space_button.click()
-        WebDriverWait(driver, 10).until(EC.alert_is_present() or EC.url_contains("confirmation"))
-        print("[DEBUG] Parking space booked!")
+        # Wait for confirmation
+        WebDriverWait(driver, 20).until(EC.alert_is_present() or EC.url_contains("confirmation") or EC.presence_of_element_located((By.XPATH, "//div[contains(text(), 'Booking Confirmed')]")))
+        print("[DEBUG] Booking confirmed!")
         driver.save_screenshot("screenshots/step_booking_confirmed.png")
         return True
 
@@ -162,9 +113,8 @@ def main():
         driver = init_driver()
         email, password = get_credentials()
         if try_login(driver, email, password):
-            booking_date = "2025-07-27"  # YYYY-MM-DD format
-            if book_parking(driver, booking_date):
-                print("[SUCCESS] Booking completed for", booking_date)
+            if book_parking(driver):
+                print("[SUCCESS] Booking completed for Sunday")
             else:
                 print("[FAIL] Booking attempt failed.")
         else:
