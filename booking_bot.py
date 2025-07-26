@@ -45,7 +45,7 @@ def get_credentials():
 # --- Safe element finder ---
 def safe_find(driver, by, value, timeout=20):
     try:
-        return WebDriverWait(timeout).until(EC.visibility_of_element_located((by, value)))
+        return WebDriverWait(driver, timeout).until(EC.visibility_of_element_located((by, value)))
     except TimeoutException:
         print(f"[ERROR] Element not visible: {value}")
         return None
@@ -132,57 +132,8 @@ def try_login(driver, email, password):
 
     # Save screenshot after all attempts if login fails
     driver.save_screenshot("screenshots/step_login_failed.png")
-    print("[FAIL] All login attempts failed.")
-    return False
-
-# --- Book parking space for Sunday ---
-def book_parking(driver):
-    try:
-        # Wait longer and scroll to ensure dashboard renders
-        time.sleep(50)  # Keep at 50 seconds for additional step
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        driver.execute_script("window.scrollTo(0, 0);")  # Scroll back to top
-        driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
-        driver.save_screenshot("screenshots/step_dashboard.png")
-
-        # Flexible XPath relative to Sunday span
-        reserve_button_xpath = "//*[contains(text(), 'Sunday')]/ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
-        reserve_button = safe_find(driver, By.XPATH, reserve_button_xpath)
-        if not reserve_button:
-            print("[ERROR] Reserve button for Sunday not found.")
-            driver.save_screenshot("screenshots/step_reserve_not_found.png")
-            return False
-
-        reserve_button.click()
-        print("[DEBUG] Clicked Reserve for Sunday.")
-        driver.save_screenshot("screenshots/step_reserve_clicked.png")
-
-        # Wait for additional step (e.g., dialog or form) with broader check
-        try:
-            WebDriverWait(driver, 15).until(EC.alert_is_present() or EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Confirm') or contains(text(), 'OK') or contains(text(), 'Submit')]")))
-            confirm_button = driver.find_elements(By.XPATH, "//button[contains(text(), 'Confirm') or contains(text(), 'OK') or contains(text(), 'Submit')]")
-            if confirm_button:
-                confirm_button[0].click()
-                print("[DEBUG] Clicked additional confirmation.")
-                driver.save_screenshot("screenshots/step_confirm_clicked.png")
-                time.sleep(5)  # Brief pause after confirmation
-        except TimeoutException:
-            print("[INFO] No additional confirmation step detected.")
-
-        # Wait for final confirmation with extended timeout
-        WebDriverWait(driver, 30).until(
-            EC.alert_is_present() or
-            EC.url_contains("confirmation") or
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]"))
-        )
-        print("[DEBUG] Booking confirmed!")
-        driver.save_screenshot("screenshots/step_booking_confirmed.png")
-        return True
-
-    except Exception as e:
-        print(f"[ERROR] Booking failed: {e}")
-        driver.save_screenshot("screenshots/step_booking_failed.png")
-        return False
+    print("[DEBUG] Login validation failed, but dashboard may be reached—check screenshots.")
+    return False  # Temporary return to allow manual verification
 
 # --- Main ---
 def main():
@@ -191,12 +142,9 @@ def main():
         driver = init_driver()
         email, password = get_credentials()
         if try_login(driver, email, password):
-            if book_parking(driver):
-                print("[SUCCESS] Booking completed for Sunday")
-            else:
-                print("[FAIL] Booking attempt failed.")
+            print("[SUCCESS] Login completed successfully.")
         else:
-            print("[FAIL] Login failed, booking aborted.")
+            print("[FAIL] Login failed or validation issue—please verify screenshots.")
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred: {e}")
     finally:
