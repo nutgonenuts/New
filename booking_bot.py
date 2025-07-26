@@ -15,7 +15,7 @@ load_dotenv()
 # --- Setup Chrome/Driver ---
 def init_driver():
     print("[DEBUG] Installing matching ChromeDriver...")
-    chromedriver_autoinstaller.install()  # Should match Chrome 138.0.7204.157
+    chromedriver_autoinstaller.install()  # Ensure compatibility with Chrome 138.0.7204.157
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -45,7 +45,7 @@ def get_credentials():
 # --- Safe element finder ---
 def safe_find(driver, by, value, timeout=20):
     try:
-        return WebDriverWait(driver, timeout).until(EC.visibility_of_element_located((by, value)))
+        return WebDriverWait(timeout).until(EC.visibility_of_element_located((by, value)))
     except TimeoutException:
         print(f"[ERROR] Element not visible: {value}")
         return None
@@ -54,20 +54,19 @@ def safe_find(driver, by, value, timeout=20):
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
-    time.sleep(30)  # Increased to 30 seconds for JS rendering
+    time.sleep(50)  # Increased to 50 seconds for JS rendering
     form = driver.execute_script("return document.querySelector('form');")
     if form:
         driver.execute_script("arguments[0].style.display = 'block';", form)
     else:
         driver.refresh()  # Retry if form not found
-        time.sleep(10)  # Additional wait after refresh
+        time.sleep(15)  # Additional wait after refresh
         form = driver.execute_script("return document.querySelector('form');")
         if form:
             driver.execute_script("arguments[0].style.display = 'block';", form)
         else:
             driver.execute_script("document.body.innerHTML += '<style>form { display: block !important; }</style>';")
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "form")))  # Wait for form
-    driver.save_screenshot("screenshots/step_home.png")
 
     email_locators = [
         (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
@@ -122,7 +121,7 @@ def try_login(driver, email, password):
         login_button.click()
 
         try:
-            WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))
+            WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Sunday')]")))
             print("[DEBUG] Login successful!")
             driver.save_screenshot("screenshots/step_logged_in.png")
             return True
@@ -131,6 +130,8 @@ def try_login(driver, email, password):
             driver.save_screenshot(f"screenshots/step_login_failed_attempt{attempt + 1}.png")
             time.sleep(2)
 
+    # Save screenshot after all attempts if login fails
+    driver.save_screenshot("screenshots/step_login_failed.png")
     print("[FAIL] All login attempts failed.")
     return False
 
@@ -138,14 +139,14 @@ def try_login(driver, email, password):
 def book_parking(driver):
     try:
         # Wait longer and scroll to ensure dashboard renders
-        time.sleep(50)  # Increased to 50 seconds for additional step
+        time.sleep(50)  # Keep at 50 seconds for additional step
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         driver.execute_script("window.scrollTo(0, 0);")  # Scroll back to top
         driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
         driver.save_screenshot("screenshots/step_dashboard.png")
 
         # Flexible XPath relative to Sunday span
-        reserve_button_xpath = "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/ancestor::div[contains(@class, 'r-t lter-2')]/descendant::button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
+        reserve_button_xpath = "//*[contains(text(), 'Sunday')]/ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
         reserve_button = safe_find(driver, By.XPATH, reserve_button_xpath)
         if not reserve_button:
             print("[ERROR] Reserve button for Sunday not found.")
