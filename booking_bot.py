@@ -55,19 +55,19 @@ def try_login(driver, email, password):
 
     # Update these locators based on the screenshot
     email_locators = [
-        (By.NAME, "email"),  # Replace with actual name
-        (By.ID, "email-input"),  # Replace with actual id
-        (By.XPATH, "//input[@type='email']")  # Adjust if needed
+        (By.NAME, "email"),
+        (By.ID, "user_email"),
+        (By.XPATH, "//input[@type='email']")
     ]
     pass_locators = [
-        (By.NAME, "password"),  # Replace with actual name
-        (By.ID, "pass-input"),  # Replace with actual id
-        (By.XPATH, "//input[@type='password']")  # Adjust if needed
+        (By.NAME, "password"),
+        (By.ID, "user_password"),
+        (By.XPATH, "//input[@type='password']")
     ]
     login_button_locators = [
-        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),  # Replace with actual text
-        (By.ID, "login-btn"),  # Replace with actual id
-        (By.XPATH, "//button[@type='submit']")  # Adjust if needed
+        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
+        (By.ID, "login-btn"),
+        (By.XPATH, "//button[@type='submit']")
     ]
 
     max_attempts = 3
