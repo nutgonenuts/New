@@ -32,6 +32,11 @@ def login(driver):
     print(f"[DEBUG] Email set? {'YES' if EMAIL else 'NO'}")
     print(f"[DEBUG] Password set? {'YES' if PASSWORD else 'NO'}")
 
+    if not EMAIL or not PASSWORD:
+        print("[ERROR] EMAIL or PASSWORD is not set. Exiting.")
+        save_screenshot(driver, "error_no_secrets")
+        exit(1)
+
     try:
         email_field = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='email']"))
@@ -39,9 +44,7 @@ def login(driver):
         password_field = driver.find_element(By.CSS_SELECTOR, "input[name='password']")
         login_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
 
-        email_field.clear()
         email_field.send_keys(EMAIL)
-        password_field.clear()
         password_field.send_keys(PASSWORD)
         save_screenshot(driver, "step2_filled_login")
 
