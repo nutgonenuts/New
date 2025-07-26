@@ -54,7 +54,7 @@ def safe_find(driver, by, value, timeout=20):
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website. URL:", driver.current_url)
-    time.sleep(50)  # Increased to 50 seconds for JS rendering
+    time.sleep(20)  # Reduced to 20 seconds, relying on validation
     form = driver.execute_script("return document.querySelector('form');")
     if form:
         driver.execute_script("arguments[0].style.display = 'block';", form)
@@ -121,8 +121,9 @@ def try_login(driver, email, password):
         login_button.click()
 
         try:
-            WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Sunday') and contains(@class, 'pull-left')]")))
+            WebDriverWait(driver, 300).until(lambda x: x.execute_script("return document.readyState") == "complete" and EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Sunday')]"))(x))
             print("[DEBUG] Login successful! URL:", driver.current_url)
+            print("[DEBUG] Page source snippet:", driver.page_source[:500])  # Log first 500 chars for debugging
             driver.save_screenshot("screenshots/step_logged_in.png")
             return True
         except TimeoutException:
@@ -133,24 +134,32 @@ def try_login(driver, email, password):
     # Save screenshot after all attempts if login fails
     driver.save_screenshot("screenshots/step_login_failed.png")
     print("[DEBUG] Login validation failed, but dashboard may be reached—check screenshots. URL:", driver.current_url)
+    print("[DEBUG] Page source snippet:", driver.page_source[:500])  # Log first 500 chars for debugging
     return False
 
 # --- Check dashboard elements ---
 def check_dashboard_elements(driver):
     print("[DEBUG] Checking dashboard elements...")
     try:
-        sunday_element = safe_find(driver, By.XPATH, "//span[contains(text(), 'Sunday') and contains(@class, 'pull-left')]")
+        sunday_element = safe_find(driver, By.XPATH, "//span[contains(text(), 'Sunday')]")
         if sunday_element:
             print("[DEBUG] 'Sunday' element found!")
         else:
             print("[ERROR] 'Sunday' element not found.")
 
-        reserve_button_xpath = "//div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
-        reserve_button = safe_find(driver, By.XPATH, reserve_button_xpath)
-        if reserve_button:
-            print("[DEBUG] 'RESERVE' button found!")
-        else:
-            print("[ERROR] 'RESERVE' button not found.")
+        reserve_button_xpaths = [
+            "//div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]",
+            "//div[contains(@class, 'pull-right')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
+        ]
+        reserve_button_found = False
+        for xpath in reserve_button_xpaths:
+            reserve_button = safe_find(driver, By.XPATH, xpath)
+            if reserve_button:
+                reserve_button_found = True
+                print("[DEBUG] 'RESERVE' button found with XPath:", xpath)
+                break
+        if not reserve_button_found:
+            print("[ERROR] 'RESERVE' button not found with any XPath.")
         driver.save_screenshot("screenshots/step_dashboard_check.png")
     except Exception as e:
         print(f"[ERROR] Dashboard check failed: {e}")
