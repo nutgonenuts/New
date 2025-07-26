@@ -6,7 +6,6 @@ on:
 jobs:
   booking:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -30,6 +29,9 @@ jobs:
           google-chrome --version
 
       - name: Run booking bot
+        env:
+          PARKALOT_EMAIL: ${{ secrets.PARKALOT_EMAIL }}
+          PARKALOT_PASSWORD: ${{ secrets.PARKALOT_PASSWORD }}
         run: python booking_bot.py
 
       - name: Upload screenshots
