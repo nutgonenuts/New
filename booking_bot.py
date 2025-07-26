@@ -122,20 +122,16 @@ def book_parking(driver):
         driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
         driver.save_screenshot("screenshots/step_dashboard.png")
 
-        # Precise XPath and CSS selector for "RESERVE" button
-        reserve_button_xpath = "//div[contains(., 'Sunday')]//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
-        reserve_button = safe_find(driver, By.XPATH, reserve_button_xpath)
+        # Precise XPath for "RESERVE" button relative to Sunday span
+        reserve_button = safe_find(driver, By.XPATH, "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/following-sibling::div//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]")
         if not reserve_button:
-            # Fallback to CSS selector
-            reserve_button = safe_find(driver, By.CSS_SELECTOR, "#app > div:nth-child(1) > div.app-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(1) > div:nth-child(2) > div > div > div:nth-child(2) > div.pull-right.p-a-sm > button:nth-child(3)")
-            if not reserve_button:
-                print("[ERROR] Reserve button for Sunday not found.")
-                # Check for disabled button
-                disabled_button = driver.find_elements(By.XPATH, "//div[contains(., 'Sunday')]//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve') and @disabled]")
-                if disabled_button:
-                    print("[INFO] Reserve button for Sunday is disabled (no spaces available).")
-                driver.save_screenshot("screenshots/step_reserve_not_found.png")
-                return False
+            print("[ERROR] Reserve button for Sunday not found.")
+            # Check for disabled button
+            disabled_button = driver.find_elements(By.XPATH, "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/following-sibling::div//button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve') and @disabled]")
+            if disabled_button:
+                print("[INFO] Reserve button for Sunday is disabled (no spaces available).")
+            driver.save_screenshot("screenshots/step_reserve_not_found.png")
+            return False
 
         reserve_button.click()
         print("[DEBUG] Clicked Reserve for Sunday.")
