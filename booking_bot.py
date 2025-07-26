@@ -39,36 +39,36 @@ def get_credentials():
         raise ValueError("EMAIL or PASSWORD not set in .env file!")
     return email, password
 
-# --- Safe element finder ---
+# --- Safe element finder with visibility ---
 def safe_find(driver, by, value, timeout=20):
     try:
-        return WebDriverWait(driver, timeout).until(EC.presence_of_element_located((by, value)))
+        return WebDriverWait(driver, timeout).until(EC.visibility_of_element_located((by, value)))
     except TimeoutException:
-        print(f"[ERROR] Element not found: {value}")
+        print(f"[ERROR] Element not visible: {value}")
         return None
 
 # --- Login attempt with multiple strategies ---
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
-    time.sleep(5)  # Wait for JS to load
+    time.sleep(10)  # Increased sleep for JS rendering
     driver.save_screenshot("screenshots/step_home.png")
 
     # Updated locators based on screenshot
     email_locators = [
         (By.XPATH, "//input[@type='email' and @label='email']"),
-        (By.CLASS_NAME, "md-form-group float-label"),
+        (By.CLASS_NAME, "form-control-sm md-input"),
         (By.XPATH, "//input[@type='email']")
     ]
     pass_locators = [
         (By.XPATH, "//input[@type='password' and @label='password']"),
-        (By.CLASS_NAME, "md-form-group float-label"),
+        (By.CLASS_NAME, "form-control-sm md-input"),
         (By.XPATH, "//input[@type='password']")
     ]
     login_button_locators = [
         (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
-        (By.CLASS_NAME, "btn primary"),
-        (By.XPATH, "//button[@type='submit']")
+        (By.CLASS_NAME, "btn btn-block md-raised primary"),
+        (By.XPATH, "//button[@type='button']")
     ]
 
     max_attempts = 3
