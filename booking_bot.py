@@ -22,6 +22,7 @@ def init_driver():
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-gpu")  # Improves headless rendering
+    chrome_options.add_argument("--start-maximized")  # Ensures full viewport
     try:
         driver = webdriver.Chrome(options=chrome_options)
         print("[DEBUG] Chrome started successfully.")
@@ -52,27 +53,31 @@ def safe_find(driver, by, value, timeout=20):
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
-    time.sleep(10)  # Increased to 10 seconds for JS rendering
+    time.sleep(15)  # Increased to 15 seconds for JS rendering
     driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
+    driver.execute_script("document.querySelector('form').style.display = 'block';")  # Force form visibility
     driver.save_screenshot("screenshots/step_home.png")
 
     email_locators = [
         (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
         (By.CLASS_NAME, "form-control-sm md-input"),
         (By.XPATH, "//input[@type='email']"),
-        (By.XPATH, "//input[contains(@class, 'md-input') and @type='email']")  # Fallback
+        (By.XPATH, "//input[contains(@class, 'md-input') and @type='email']"),  # Fallback
+        (By.XPATH, "//input[@name='email']")  # Additional fallback
     ]
     pass_locators = [
         (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
         (By.CLASS_NAME, "form-control-sm md-input"),
         (By.XPATH, "//input[@type='password']"),
-        (By.XPATH, "//input[contains(@class, 'md-input') and @type='password']")  # Fallback
+        (By.XPATH, "//input[contains(@class, 'md-input') and @type='password']"),  # Fallback
+        (By.XPATH, "//input[@name='password']")  # Additional fallback
     ]
     login_button_locators = [
         (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
         (By.CLASS_NAME, "btn btn-block md-raised primary"),
         (By.XPATH, "//button[@type='button']"),
-        (By.XPATH, "//button[contains(@class, 'md-btn') and contains(text(), 'LOG IN')]")  # Fallback
+        (By.XPATH, "//button[contains(@class, 'md-btn') and contains(text(), 'LOG IN')]"),  # Fallback
+        (By.XPATH, "//button[@type='submit']")  # Additional fallback
     ]
 
     max_attempts = 3
@@ -159,3 +164,26 @@ def book_parking(driver):
     except Exception as e:
         print(f"[ERROR] Booking failed: {e}")
         driver.save_screenshot("screenshots/step_booking_failed.png")
+        return False
+
+# --- Main ---
+def main():
+    driver = None
+    try:
+        driver = init_driver()
+        email, password = get_credentials()
+        if try_login(driver, email, password):
+            if book_parking(driver):
+                print("[SUCCESS] Booking completed for Sunday")
+            else:
+                print("[FAIL] Booking attempt failed.")
+        else:
+            print("[FAIL] Login failed, booking aborted.")
+    except Exception as e:
+        print(f"[ERROR] An unexpected error occurred: {e}")
+    finally:
+        if driver:
+            driver.quit()
+
+if __name__ == "__main__":
+    main()
