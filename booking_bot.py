@@ -121,7 +121,7 @@ def try_login(driver, email, password):
         login_button.click()
 
         try:
-            WebDriverWait(driver, 300).until(lambda x: x.execute_script("return document.readyState") == "complete" and EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Sunday')]"))(x))
+            WebDriverWait(driver, 300).until(lambda x: not EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Loading') or contains(@class, 'loading')]"))(x) and x.execute_script("return document.readyState") == "complete" and EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Sunday')]"))(x))
             print("[DEBUG] Login successful! URL:", driver.current_url)
             print("[DEBUG] Page source snippet:", driver.page_source[:500])  # Log first 500 chars for debugging
             driver.save_screenshot("screenshots/step_logged_in.png")
@@ -137,33 +137,84 @@ def try_login(driver, email, password):
     print("[DEBUG] Page source snippet:", driver.page_source[:500])  # Log first 500 chars for debugging
     return False
 
-# --- Check dashboard elements ---
-def check_dashboard_elements(driver):
-    print("[DEBUG] Checking dashboard elements...")
+# --- Book parking space for Sunday ---
+def book_parking(driver):
     try:
-        sunday_element = safe_find(driver, By.XPATH, "//span[contains(text(), 'Sunday')]")
-        if sunday_element:
-            print("[DEBUG] 'Sunday' element found!")
-        else:
-            print("[ERROR] 'Sunday' element not found.")
+        # Wait longer and scroll to ensure dashboard renders
+        time.sleep(50)  # 50 seconds for additional step
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        driver.execute_script("window.scrollTo(0, 0);")  # Scroll back to top
+        driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
+        driver.save_screenshot("screenshots/step_dashboard.png")
 
+        # Find all Sunday elements
+        sunday_elements = driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday')]")
+        if not sunday_elements:
+            print("[ERROR] No 'Sunday' elements found.")
+            driver.save_screenshot("screenshots/step_sundays_not_found.png")
+            return False
+
+        print("[DEBUG] Found", len(sunday_elements), "Sunday elements:")
+        for i, sunday in enumerate(sunday_elements, 1):
+            print(f"[DEBUG] Sunday {i} at position: {sunday.location}")
+            # Attempt to find associated date (e.g., sibling or parent text)
+            try:
+                date_element = sunday.find_element(By.XPATH, "./preceding-sibling::*[contains(@class, 'date')] | ./parent::*/span[contains(@class, 'date')]")
+                date_text = date_element.text if date_element else "No date found"
+                print(f"[DEBUG] Sunday {i} date: {date_text}")
+            except NoSuchElementException:
+                print(f"[DEBUG] Sunday {i} date: No date found")
+
+        # Select the first Sunday for now (to be refined later)
+        target_sunday = sunday_elements[0]
+        print("[DEBUG] Selecting first Sunday for booking.")
+
+        # Find RESERVE button associated with the target Sunday
         reserve_button_xpaths = [
-            "//div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]",
-            "//div[contains(@class, 'pull-right')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
+            ".//ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]",
+            ".//ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::div[contains(@class, 'pull-right')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
         ]
-        reserve_button_found = False
+        reserve_button = None
         for xpath in reserve_button_xpaths:
-            reserve_button = safe_find(driver, By.XPATH, xpath)
+            reserve_button = target_sunday.find_element(By.XPATH, xpath)
             if reserve_button:
-                reserve_button_found = True
                 print("[DEBUG] 'RESERVE' button found with XPath:", xpath)
                 break
-        if not reserve_button_found:
-            print("[ERROR] 'RESERVE' button not found with any XPath.")
-        driver.save_screenshot("screenshots/step_dashboard_check.png")
+        if not reserve_button:
+            print("[ERROR] 'RESERVE' button not found for selected Sunday.")
+            driver.save_screenshot("screenshots/step_reserve_not_found.png")
+            return False
+
+        reserve_button.click()
+        print("[DEBUG] Clicked 'RESERVE' button.")
+        driver.save_screenshot("screenshots/step_reserve_clicked.png")
+
+        # Wait for additional step (e.g., dialog or form) with broader check
+        try:
+            WebDriverWait(driver, 30).until(EC.alert_is_present() or EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Confirm') or contains(text(), 'OK') or contains(text(), 'Submit')]")))
+            confirm_button = driver.find_elements(By.XPATH, "//button[contains(text(), 'Confirm') or contains(text(), 'OK') or contains(text(), 'Submit')]")
+            if confirm_button:
+                confirm_button[0].click()
+                print("[DEBUG] Clicked additional confirmation.")
+                driver.save_screenshot("screenshots/step_confirm_clicked.png")
+                time.sleep(5)  # Brief pause after confirmation
+        except TimeoutException:
+            print("[INFO] No additional confirmation step detected.")
+
+        # Wait for final confirmation with extended timeout
+        WebDriverWait(driver, 300).until(
+            EC.alert_is_present() or
+            EC.url_contains("confirmation") or
+            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]"))
+        )
+        print("[DEBUG] Booking confirmed!")
+        driver.save_screenshot("screenshots/step_booking_confirmed.png")
+        return True
+
     except Exception as e:
-        print(f"[ERROR] Dashboard check failed: {e}")
-        driver.save_screenshot("screenshots/step_dashboard_check_failed.png")
+        print(f"[ERROR] Booking failed: {e}")
+        driver.save_screenshot("screenshots/step_booking_failed.png")
+        return False
 
 # --- Main ---
 def main():
@@ -172,8 +223,10 @@ def main():
         driver = init_driver()
         email, password = get_credentials()
         if try_login(driver, email, password):
-            print("[SUCCESS] Login completed successfully.")
-            check_dashboard_elements(driver)
+            if book_parking(driver):
+                print("[SUCCESS] Booking completed for Sunday")
+            else:
+                print("[FAIL] Booking attempt failed.")
         else:
             print("[FAIL] Login failed or validation issue—please verify screenshots.")
     except Exception as e:
