@@ -117,16 +117,16 @@ def try_login(driver, email, password):
 def book_parking(driver):
     try:
         # Wait longer for dashboard to load and ensure JS renders
-        time.sleep(15)  # Increased to 15 seconds
+        time.sleep(20)  # Increased to 20 seconds
         driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
         driver.save_screenshot("screenshots/step_dashboard.png")
 
-        # More flexible XPath for "RESERVE" button under Sunday card
-        reserve_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'titer-2') and contains(., 'Sunday')]//button[contains(@class, 'btn') and contains(text(), 'RESERVE') and not(@disabled)]")
+        # Precise XPath for "RESERVE" button under Sunday card
+        reserve_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'titer-2') and contains(., 'Sunday')]//button[contains(@class, 'btn btn-block md-raised primary') and contains(text(), 'RESERVE')]")
         if not reserve_button:
-            print("[ERROR] Reserve button for Sunday not found or disabled.")
+            print("[ERROR] Reserve button for Sunday not found.")
             # Check for disabled button
-            disabled_button = driver.find_elements(By.XPATH, "//div[contains(@class, 'titer-2') and contains(., 'Sunday')]//button[contains(@class, 'btn') and contains(text(), 'RESERVE') and @disabled]")
+            disabled_button = driver.find_elements(By.XPATH, "//div[contains(@class, 'titer-2') and contains(., 'Sunday')]//button[contains(@class, 'btn btn-block md-raised primary') and contains(text(), 'RESERVE') and @disabled]")
             if disabled_button:
                 print("[INFO] Reserve button for Sunday is disabled (no spaces available).")
             driver.save_screenshot("screenshots/step_reserve_not_found.png")
