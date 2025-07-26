@@ -53,21 +53,21 @@ def try_login(driver, email, password):
     print("[DEBUG] Opened Parkalot website.")
     driver.save_screenshot("screenshots/step_home.png")
 
-    # Define multiple locator strategies for each field
+    # Update these locators based on the screenshot
     email_locators = [
-        (By.NAME, "email"),
-        (By.ID, "user_email"),
-        (By.XPATH, "//input[@type='email']")
+        (By.NAME, "email"),  # Replace with actual name
+        (By.ID, "email-input"),  # Replace with actual id
+        (By.XPATH, "//input[@type='email']")  # Adjust if needed
     ]
     pass_locators = [
-        (By.NAME, "password"),
-        (By.ID, "user_password"),
-        (By.XPATH, "//input[@type='password']")
+        (By.NAME, "password"),  # Replace with actual name
+        (By.ID, "pass-input"),  # Replace with actual id
+        (By.XPATH, "//input[@type='password']")  # Adjust if needed
     ]
     login_button_locators = [
-        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
-        (By.ID, "login-btn"),
-        (By.XPATH, "//button[@type='submit']")
+        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),  # Replace with actual text
+        (By.ID, "login-btn"),  # Replace with actual id
+        (By.XPATH, "//button[@type='submit']")  # Adjust if needed
     ]
 
     max_attempts = 3
@@ -77,17 +77,14 @@ def try_login(driver, email, password):
         pass_field = None
         login_button = None
 
-        # Try each email locator
         for by, value in email_locators:
             email_field = safe_find(driver, by, value)
             if email_field:
                 break
-        # Try each password locator
         for by, value in pass_locators:
             pass_field = safe_find(driver, by, value)
             if pass_field:
                 break
-        # Try each login button locator
         for by, value in login_button_locators:
             login_button = safe_find(driver, by, value)
             if login_button:
@@ -96,7 +93,7 @@ def try_login(driver, email, password):
         if not email_field or not pass_field or not login_button:
             print("[ERROR] Login fields not found in attempt", attempt + 1)
             driver.save_screenshot(f"screenshots/step_error_no_fields_attempt{attempt + 1}.png")
-            time.sleep(2)  # Wait before retrying
+            time.sleep(2)
             continue
 
         email_field.send_keys(email)
@@ -104,14 +101,14 @@ def try_login(driver, email, password):
         login_button.click()
 
         try:
-            WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))  # Increased timeout
+            WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))
             print("[DEBUG] Login successful!")
             driver.save_screenshot("screenshots/step_logged_in.png")
             return True
         except TimeoutException:
             print("[ERROR] Login failed in attempt", attempt + 1)
             driver.save_screenshot(f"screenshots/step_login_failed_attempt{attempt + 1}.png")
-            time.sleep(2)  # Wait before retrying
+            time.sleep(2)
 
     print("[FAIL] All login attempts failed.")
     return False
@@ -119,7 +116,6 @@ def try_login(driver, email, password):
 # --- Book parking space ---
 def book_parking(driver, booking_date):
     try:
-        # Navigate to booking section
         book_button = safe_find(driver, By.XPATH, "//a[contains(text(), 'Book Parking')] | //button[contains(text(), 'Book Now')]")
         if not book_button:
             print("[ERROR] Booking section not found.")
@@ -130,7 +126,6 @@ def book_parking(driver, booking_date):
         print("[DEBUG] Navigated to booking page.")
         driver.save_screenshot("screenshots/step_booking_page.png")
 
-        # Select date
         date_picker = safe_find(driver, By.ID, "datePicker") or safe_find(driver, By.CLASS_NAME, "date-input")
         if not date_picker:
             print("[ERROR] Date picker not found.")
@@ -142,8 +137,7 @@ def book_parking(driver, booking_date):
         print(f"[DEBUG] Selected date: {booking_date}")
         driver.save_screenshot("screenshots/step_date_selected.png")
 
-        # Find and book the first available space (update this locator)
-        book_space_button = safe_find(driver, By.ID, "reserve-btn")  # Placeholder - replace with actual ID or XPath
+        book_space_button = safe_find(driver, By.ID, "reserve-btn")  # Update this locator
         if not book_space_button:
             print("[ERROR] No available spaces or book button found.")
             driver.save_screenshot("screenshots/step_no_spaces.png")
@@ -167,7 +161,6 @@ def main():
         driver = init_driver()
         email, password = get_credentials()
         if try_login(driver, email, password):
-            # Book for tomorrow (Sunday, July 27, 2025)
             booking_date = "2025-07-27"  # YYYY-MM-DD format
             if book_parking(driver, booking_date):
                 print("[SUCCESS] Booking completed for", booking_date)
