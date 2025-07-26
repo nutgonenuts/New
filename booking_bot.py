@@ -1,75 +1,75 @@
 import os
 import time
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
-# --- Configuration ---
-USER_EMAIL = os.getenv("PARKALOT_EMAIL", "your-email@example.com")
-USER_PASSWORD = os.getenv("PARKALOT_PASSWORD", "your-password")
-BASE_URL = "https://your-parkalot-login-url.com"
+EMAIL = os.getenv("PARKALOT_EMAIL")
+PASSWORD = os.getenv("PARKALOT_PASSWORD")
 
-# --- Chrome Setup ---
-print("[DEBUG] Setting up Chrome driver...")
-chrome_options = Options()
-chrome_options.add_argument("--headless")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-dev-shm-usage")
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+def log_debug(msg):
+    print(f"[DEBUG] {msg}")
 
-# Create screenshot directory
-os.makedirs("screenshots", exist_ok=True)
+def take_screenshot(driver, name):
+    os.makedirs("screenshots", exist_ok=True)
+    path = os.path.join("screenshots", f"{name}.png")
+    driver.save_screenshot(path)
+    log_debug(f"Screenshot saved: {path}")
 
-def save_screenshot(step_name):
-    filename = f"screenshots/{step_name}.png"
-    driver.save_screenshot(filename)
-    print(f"[DEBUG] Screenshot saved: {filename}")
+def main():
+    log_debug("Starting Parkalot Booking Bot...")
+    
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
 
-try:
-    # --- Step 1: Open Website ---
-    print("[DEBUG] Opening Parkalot website...")
-    driver.get(BASE_URL)
-    time.sleep(2)
-    save_screenshot("step1_home")
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    driver.set_window_size(1920, 1080)
 
-    # --- Step 2: Login ---
-    print("[DEBUG] Entering login credentials...")
-    driver.find_element(By.CSS_SELECTOR, "input[type='email']").send_keys(USER_EMAIL)
-    driver.find_element(By.CSS_SELECTOR, "input[type='password']").send_keys(USER_PASSWORD)
-    save_screenshot("step2_before_login")
+    try:
+        # Open website
+        driver.get("https://app.parkalot.io/login")
+        log_debug("Opened Parkalot website.")
+        take_screenshot(driver, "step1_home")
 
-    print("[DEBUG] Clicking login button...")
-    driver.find_element(By.XPATH, "//button[contains(text(),'LOG IN')]").click()
-    time.sleep(3)
-    save_screenshot("step3_after_login")
+        # Login
+        email_field = driver.find_element(By.NAME, "email")
+        password_field = driver.find_element(By.NAME, "password")
+        login_button = driver.find_element(By.XPATH, "//button[contains(text(), 'LOG IN')]")
 
-    if "login" in driver.current_url.lower():
-        print("[ERROR] Login failed. Still on login page.")
-        save_screenshot("error_login_failed")
-        raise Exception("Login failed")
+        email_field.send_keys(EMAIL)
+        password_field.send_keys(PASSWORD)
+        login_button.click()
 
-    print("[DEBUG] Successfully logged in!")
+        time.sleep(5)
+        take_screenshot(driver, "step2_after_login")
 
-    # --- Step 3: Find Reserve Button ---
-    print("[DEBUG] Searching for Reserve button...")
-    reserve_buttons = driver.find_elements(By.XPATH, "//button[contains(text(),'Reserve')]")
-    if not reserve_buttons:
-        print("[ERROR] No Reserve buttons found.")
-        save_screenshot("error_no_reserve")
-        raise Exception("No Reserve buttons found")
+        # Check if login was successful
+        if "login" in driver.current_url.lower():
+            log_debug("Login failed - still on login page.")
+            raise Exception("Login failed.")
 
-    print(f"[DEBUG] Found {len(reserve_buttons)} Reserve button(s). Clicking the first one...")
-    reserve_buttons[0].click()
-    time.sleep(2)
-    save_screenshot("step4_reserved")
+        log_debug("Login successful.")
 
-    print("[DEBUG] Booking successful!")
+        # Find Reserve button
+        reserve_button = None
+        try:
+            reserve_button = driver.find_element(By.XPATH, "//button[contains(@class, 'reserve')]")
+            reserve_button.click()
+            log_debug("Clicked Reserve button.")
+            take_screenshot(driver, "step3_reserved")
+        except Exception:
+            log_debug("No Reserve buttons found.")
+            take_screenshot(driver, "step_error_no_reserve")
+            raise
 
-except Exception as e:
-    print(f"[ERROR] {e}")
+    finally:
+        driver.quit()
+        log_debug("Browser closed.")
 
-finally:
-    print("[DEBUG] Closing browser.")
-    driver.quit()
+if __name__ == "__main__":
+    main()
