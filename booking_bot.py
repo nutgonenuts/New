@@ -47,34 +47,74 @@ def safe_find(driver, by, value, timeout=10):
         print(f"[ERROR] Element not found: {value}")
         return None
 
-# --- Login attempt ---
+# --- Login attempt with multiple strategies ---
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
     driver.save_screenshot("screenshots/step_home.png")
 
-    email_field = safe_find(driver, By.NAME, "email")
-    pass_field = safe_find(driver, By.NAME, "password")
-    login_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'LOG IN')]")
+    # Define multiple locator strategies for each field
+    email_locators = [
+        (By.NAME, "email"),
+        (By.ID, "user_email"),
+        (By.XPATH, "//input[@type='email']")
+    ]
+    pass_locators = [
+        (By.NAME, "password"),
+        (By.ID, "user_password"),
+        (By.XPATH, "//input[@type='password']")
+    ]
+    login_button_locators = [
+        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
+        (By.ID, "login-btn"),
+        (By.XPATH, "//button[@type='submit']")
+    ]
 
-    if not email_field or not pass_field or not login_button:
-        print("[ERROR] Login fields not found.")
-        driver.save_screenshot("screenshots/step_error_no_fields.png")
-        return False
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        print(f"[DEBUG] Login attempt {attempt + 1}/{max_attempts}")
+        email_field = None
+        pass_field = None
+        login_button = None
 
-    email_field.send_keys(email)
-    pass_field.send_keys(password)
-    login_button.click()
+        # Try each email locator
+        for by, value in email_locators:
+            email_field = safe_find(driver, by, value)
+            if email_field:
+                break
+        # Try each password locator
+        for by, value in pass_locators:
+            pass_field = safe_find(driver, by, value)
+            if pass_field:
+                break
+        # Try each login button locator
+        for by, value in login_button_locators:
+            login_button = safe_find(driver, by, value)
+            if login_button:
+                break
 
-    try:
-        WebDriverWait(driver, 10).until(EC.url_contains("dashboard"))
-        print("[DEBUG] Login successful!")
-        driver.save_screenshot("screenshots/step_logged_in.png")
-        return True
-    except TimeoutException:
-        print("[ERROR] Login failed.")
-        driver.save_screenshot("screenshots/step_login_failed.png")
-        return False
+        if not email_field or not pass_field or not login_button:
+            print("[ERROR] Login fields not found in attempt", attempt + 1)
+            driver.save_screenshot(f"screenshots/step_error_no_fields_attempt{attempt + 1}.png")
+            time.sleep(2)  # Wait before retrying
+            continue
+
+        email_field.send_keys(email)
+        pass_field.send_keys(password)
+        login_button.click()
+
+        try:
+            WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))  # Increased timeout
+            print("[DEBUG] Login successful!")
+            driver.save_screenshot("screenshots/step_logged_in.png")
+            return True
+        except TimeoutException:
+            print("[ERROR] Login failed in attempt", attempt + 1)
+            driver.save_screenshot(f"screenshots/step_login_failed_attempt{attempt + 1}.png")
+            time.sleep(2)  # Wait before retrying
+
+    print("[FAIL] All login attempts failed.")
+    return False
 
 # --- Book parking space ---
 def book_parking(driver, booking_date):
