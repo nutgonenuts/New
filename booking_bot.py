@@ -15,6 +15,8 @@ def save_screenshot(driver, name):
 
 def main():
     print("[DEBUG] Starting Parkalot Booking Bot...")
+    print(f"[DEBUG] Email set? {'YES' if EMAIL else 'NO'}")
+    print(f"[DEBUG] Password set? {'YES' if PASSWORD else 'NO'}")
 
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
@@ -28,21 +30,28 @@ def main():
         print("[DEBUG] Opened Parkalot website.")
         save_screenshot(driver, "step1_home")
 
-        # Fill login form
-        driver.find_element(By.NAME, "email").send_keys(EMAIL)
-        driver.find_element(By.NAME, "password").send_keys(PASSWORD)
+        email_input = driver.find_element(By.NAME, "email")
+        password_input = driver.find_element(By.NAME, "password")
+
+        print(f"[DEBUG] Found email field? {'YES' if email_input else 'NO'}")
+        print(f"[DEBUG] Found password field? {'YES' if password_input else 'NO'}")
+
+        email_input.send_keys(EMAIL)
+        password_input.send_keys(PASSWORD)
         save_screenshot(driver, "step2_filled_login")
 
-        driver.find_element(By.XPATH, "//button[contains(text(), 'LOG IN')]").click()
+        login_button = driver.find_element(By.XPATH, "//button[contains(text(), 'LOG IN')]")
+        login_button.click()
         print("[DEBUG] Login button clicked.")
+
         time.sleep(5)
         save_screenshot(driver, "step3_after_login")
 
-        # Check if login was successful
         if "login" in driver.current_url.lower():
             raise Exception("Login failed. Still on login page.")
 
         print("[DEBUG] Login successful.")
+
     except Exception as e:
         print(f"[ERROR] {e}")
         save_screenshot(driver, "step_final_error")
