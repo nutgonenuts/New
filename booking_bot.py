@@ -39,7 +39,7 @@ def get_credentials():
         raise ValueError("EMAIL or PASSWORD not set in .env file!")
     return email, password
 
-# --- Safe element finder with visibility ---
+# --- Safe element finder ---
 def safe_find(driver, by, value, timeout=20):
     try:
         return WebDriverWait(driver, timeout).until(EC.visibility_of_element_located((by, value)))
@@ -51,17 +51,17 @@ def safe_find(driver, by, value, timeout=20):
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
-    time.sleep(10)  # Increased sleep for JS rendering
+    time.sleep(5)  # Wait for JS to load
     driver.save_screenshot("screenshots/step_home.png")
 
     # Updated locators based on screenshot
     email_locators = [
-        (By.XPATH, "//input[@type='email' and @label='email']"),
+        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
         (By.CLASS_NAME, "form-control-sm md-input"),
         (By.XPATH, "//input[@type='email']")
     ]
     pass_locators = [
-        (By.XPATH, "//input[@type='password' and @label='password']"),
+        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
         (By.CLASS_NAME, "form-control-sm md-input"),
         (By.XPATH, "//input[@type='password']")
     ]
