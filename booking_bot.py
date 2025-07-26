@@ -1,64 +1,34 @@
 import os
 import time
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-EMAIL = os.getenv("PARKALOT_EMAIL")
-PASSWORD = os.getenv("PARKALOT_PASSWORD")
+EMAIL = os.getenv("EMAIL")
+PASSWORD = os.getenv("PASSWORD")
 
-def save_screenshot(driver, name):
-    os.makedirs("screenshots", exist_ok=True)
-    driver.save_screenshot(f"screenshots/{name}.png")
+def debug_log(msg):
+    print(f"[DEBUG] {msg}")
 
-def main():
-    print("[DEBUG] Starting Parkalot Booking Bot...")
-    print(f"[DEBUG] Email set? {'YES' if EMAIL else 'NO'}")
-    print(f"[DEBUG] Password set? {'YES' if PASSWORD else 'NO'}")
-
+def init_driver():
     chrome_options = Options()
+    chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--headless")
+    return webdriver.Chrome(options=chrome_options)
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+def login(driver):
+    driver.get("https://app.parkalot.io/login")
+    debug_log("Opened Parkalot website.")
 
     try:
-        driver.get("https://app.parkalot.io")
-        print("[DEBUG] Opened Parkalot website.")
-        save_screenshot(driver, "step1_home")
-
-        email_input = driver.find_element(By.NAME, "email")
-        password_input = driver.find_element(By.NAME, "password")
-
-        print(f"[DEBUG] Found email field? {'YES' if email_input else 'NO'}")
-        print(f"[DEBUG] Found password field? {'YES' if password_input else 'NO'}")
-
-        email_input.send_keys(EMAIL)
-        password_input.send_keys(PASSWORD)
-        save_screenshot(driver, "step2_filled_login")
-
-        login_button = driver.find_element(By.XPATH, "//button[contains(text(), 'LOG IN')]")
-        login_button.click()
-        print("[DEBUG] Login button clicked.")
-
-        time.sleep(5)
-        save_screenshot(driver, "step3_after_login")
-
-        if "login" in driver.current_url.lower():
-            raise Exception("Login failed. Still on login page.")
-
-        print("[DEBUG] Login successful.")
-
-    except Exception as e:
-        print(f"[ERROR] {e}")
-        save_screenshot(driver, "step_final_error")
-        exit(1)
-    finally:
-        driver.quit()
-        print("[DEBUG] Browser closed.")
-
-if __name__ == "__main__":
-    main()
+        # Wait for login form to appear
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='email']"))
+        )
+    except TimeoutException:
+        raise Exception("Login form
