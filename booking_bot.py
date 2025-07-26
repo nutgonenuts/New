@@ -48,7 +48,7 @@ def safe_find(driver, by, value, timeout=20):
         print(f"[ERROR] Element not visible: {value}")
         return None
 
-# --- Login attempt with single strategy ---
+# --- Login attempt with multiple strategies ---
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
@@ -56,28 +56,67 @@ def try_login(driver, email, password):
     driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
     driver.save_screenshot("screenshots/step_home.png")
 
-    email_field = safe_find(driver, By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']")
-    pass_field = safe_find(driver, By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']")
-    login_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'LOG IN')]")
+    email_locators = [
+        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
+        (By.CLASS_NAME, "form-control-sm md-input"),
+        (By.XPATH, "//input[@type='email']"),
+        (By.XPATH, "//input[contains(@class, 'md-input') and @type='email']")  # Fallback
+    ]
+    pass_locators = [
+        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
+        (By.CLASS_NAME, "form-control-sm md-input"),
+        (By.XPATH, "//input[@type='password']"),
+        (By.XPATH, "//input[contains(@class, 'md-input') and @type='password']")  # Fallback
+    ]
+    login_button_locators = [
+        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
+        (By.CLASS_NAME, "btn btn-block md-raised primary"),
+        (By.XPATH, "//button[@type='button']"),
+        (By.XPATH, "//button[contains(@class, 'md-btn') and contains(text(), 'LOG IN')]")  # Fallback
+    ]
 
-    if not email_field or not pass_field or not login_button:
-        print("[ERROR] Login fields not found.")
-        driver.save_screenshot("screenshots/step_error_no_fields.png")
-        return False
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        print(f"[DEBUG] Login attempt {attempt + 1}/{max_attempts}")
+        email_field = None
+        pass_field = None
+        login_button = None
 
-    email_field.send_keys(email)
-    pass_field.send_keys(password)
-    login_button.click()
+        for by, value in email_locators:
+            email_field = safe_find(driver, by, value)
+            if email_field:
+                break
+        for by, value in pass_locators:
+            pass_field = safe_find(driver, by, value)
+            if pass_field:
+                break
+        for by, value in login_button_locators:
+            login_button = safe_find(driver, by, value)
+            if login_button:
+                break
 
-    try:
-        WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))
-        print("[DEBUG] Login successful!")
-        driver.save_screenshot("screenshots/step_logged_in.png")
-        return True
-    except TimeoutException:
-        print("[ERROR] Login failed.")
-        driver.save_screenshot("screenshots/step_login_failed.png")
-        return False
+        if not email_field or not pass_field or not login_button:
+            print("[ERROR] Login fields not found in attempt", attempt + 1)
+            driver.save_screenshot(f"screenshots/step_error_no_fields_attempt{attempt + 1}.png")
+            time.sleep(2)
+            continue
+
+        email_field.send_keys(email)
+        pass_field.send_keys(password)
+        login_button.click()
+
+        try:
+            WebDriverWait(driver, 20).until(EC.url_contains("dashboard"))
+            print("[DEBUG] Login successful!")
+            driver.save_screenshot("screenshots/step_logged_in.png")
+            return True
+        except TimeoutException:
+            print("[ERROR] Login failed in attempt", attempt + 1)
+            driver.save_screenshot(f"screenshots/step_login_failed_attempt{attempt + 1}.png")
+            time.sleep(2)
+
+    print("[FAIL] All login attempts failed.")
+    return False
 
 # --- Book parking space for Sunday ---
 def book_parking(driver):
@@ -120,26 +159,3 @@ def book_parking(driver):
     except Exception as e:
         print(f"[ERROR] Booking failed: {e}")
         driver.save_screenshot("screenshots/step_booking_failed.png")
-        return False
-
-# --- Main ---
-def main():
-    driver = None
-    try:
-        driver = init_driver()
-        email, password = get_credentials()
-        if try_login(driver, email, password):
-            if book_parking(driver):
-                print("[SUCCESS] Booking completed for Sunday")
-            else:
-                print("[FAIL] Booking attempt failed.")
-        else:
-            print("[FAIL] Login failed, booking aborted.")
-    except Exception as e:
-        print(f"[ERROR] An unexpected error occurred: {e}")
-    finally:
-        if driver:
-            driver.quit()
-
-if __name__ == "__main__":
-    main()
