@@ -54,12 +54,18 @@ def safe_find(driver, by, value, timeout=20):
 def try_login(driver, email, password):
     driver.get("https://app.parkalot.io/login")
     print("[DEBUG] Opened Parkalot website.")
-    time.sleep(25)  # Increased to 25 seconds for JS rendering with new Chrome
+    time.sleep(30)  # Increased to 30 seconds for JS rendering
     form = driver.execute_script("return document.querySelector('form');")
     if form:
         driver.execute_script("arguments[0].style.display = 'block';", form)
     else:
-        driver.execute_script("document.body.innerHTML += '<style>form { display: block !important; }</style>';")
+        driver.refresh()  # Retry if form not found
+        time.sleep(10)  # Additional wait after refresh
+        form = driver.execute_script("return document.querySelector('form');")
+        if form:
+            driver.execute_script("arguments[0].style.display = 'block';", form)
+        else:
+            driver.execute_script("document.body.innerHTML += '<style>form { display: block !important; }</style>';")
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "form")))  # Wait for form
     driver.save_screenshot("screenshots/step_home.png")
 
@@ -132,7 +138,7 @@ def try_login(driver, email, password):
 def book_parking(driver):
     try:
         # Wait longer and scroll to ensure dashboard renders
-        time.sleep(30)  # Keep at 30 seconds
+        time.sleep(50)  # Increased to 50 seconds for additional step
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         driver.execute_script("window.scrollTo(0, 0);")  # Scroll back to top
         driver.execute_script("document.querySelector('.app-body').style.display = 'block';")
@@ -142,26 +148,31 @@ def book_parking(driver):
         reserve_button_xpath = "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/ancestor::div[contains(@class, 'r-t lter-2')]/descendant::button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"
         reserve_button = safe_find(driver, By.XPATH, reserve_button_xpath)
         if not reserve_button:
-            # Fallback to CSS selector
-            reserve_button = safe_find(driver, By.CSS_SELECTOR, "#app > div:nth-child(1) > div.app-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(1) > div:nth-child(2) > div > div > div:nth-child(2) > div.pull-right.p-a-sm > button:nth-child(3)")
-            if not reserve_button:
-                print("[ERROR] Reserve button for Sunday not found.")
-                # Check for disabled button
-                disabled_button = driver.find_elements(By.XPATH, "//span[contains(@class, 'pull-left _300') and contains(text(), 'Sunday')]/ancestor::div[contains(@class, 'r-t lter-2')]/descendant::button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve') and @disabled]")
-                if disabled_button:
-                    print("[INFO] Reserve button for Sunday is disabled (no spaces available).")
-                driver.save_screenshot("screenshots/step_reserve_not_found.png")
-                return False
+            print("[ERROR] Reserve button for Sunday not found.")
+            driver.save_screenshot("screenshots/step_reserve_not_found.png")
+            return False
 
         reserve_button.click()
         print("[DEBUG] Clicked Reserve for Sunday.")
         driver.save_screenshot("screenshots/step_reserve_clicked.png")
 
-        # Wait for confirmation with multiple conditions
-        WebDriverWait(driver, 20).until(
+        # Wait for additional step (e.g., dialog or form) with broader check
+        try:
+            WebDriverWait(driver, 15).until(EC.alert_is_present() or EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Confirm') or contains(text(), 'OK') or contains(text(), 'Submit')]")))
+            confirm_button = driver.find_elements(By.XPATH, "//button[contains(text(), 'Confirm') or contains(text(), 'OK') or contains(text(), 'Submit')]")
+            if confirm_button:
+                confirm_button[0].click()
+                print("[DEBUG] Clicked additional confirmation.")
+                driver.save_screenshot("screenshots/step_confirm_clicked.png")
+                time.sleep(5)  # Brief pause after confirmation
+        except TimeoutException:
+            print("[INFO] No additional confirmation step detected.")
+
+        # Wait for final confirmation with extended timeout
+        WebDriverWait(driver, 30).until(
             EC.alert_is_present() or
             EC.url_contains("confirmation") or
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed')]"))
+            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]"))
         )
         print("[DEBUG] Booking confirmed!")
         driver.save_screenshot("screenshots/step_booking_confirmed.png")
