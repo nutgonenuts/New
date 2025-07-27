@@ -56,7 +56,7 @@ def safe_find(driver, by, value, timeout=20, description="element"):
         print(f"[INFO] Found {description}: {value}")
         return element
     except TimeoutException:
-        print(f"[ERROR] Timeout waiting for {description}: {value}")  # Fixed f-string syntax
+        print(f"[ERROR] Timeout waiting for {description}: {value}")
         return None
 
 # Login to Parkalot
@@ -290,7 +290,6 @@ def book_parking(driver):
 
         # Step 3: Check AGREE checkbox
         agree_checkbox_locators = [
-            (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(., 'I Agree')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"),
             (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"),
             (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//div[contains(@class, 'MuiBox-root')]//label//input[@type='checkbox']"),
             (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']"),  # Fallback
@@ -298,9 +297,14 @@ def book_parking(driver):
 
         agree_checkbox = None
         for by, value in agree_checkbox_locators:
-            agree_checkbox = safe_find(driver, by, value, timeout=20, description="AGREE checkbox")  # Increased timeout to 20s
-            if agree_checkbox:
+            # First check for presence
+            try:
+                WebDriverWait(driver, 20).until(EC.presence_of_element_located((by, value)))
+                agree_checkbox = driver.find_element(by, value)
+                print(f"[INFO] Detected AGREE checkbox with locator: {value}")
                 break
+            except TimeoutException:
+                print(f"[WARN] Presence check failed for {value}")
 
         if agree_checkbox:
             # Scroll to the end of the modal to satisfy the requirement
@@ -308,11 +312,11 @@ def book_parking(driver):
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", modal)
             time.sleep(3)  # Increased wait to 3s to ensure scroll completes
 
-            # Wait for the label containing the checkbox to be visible
-            WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(., 'I Agree')]")))
+            # Wait for the checkbox to be visible
+            WebDriverWait(driver, 10).until(EC.visibility_of(agree_checkbox))
             
-            # Wait for checkbox to be clickable after scroll
-            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(., 'I Agree')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]")))
+            # Wait for checkbox to be clickable
+            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]")))
             
             # Ensure the checkbox is visible and scroll into view
             driver.execute_script("arguments[0].scrollIntoView(true);", agree_checkbox)
@@ -324,8 +328,8 @@ def book_parking(driver):
                 print("[INFO] Attempted to check AGREE checkbox with normal click")
             except Exception as e:
                 print(f"[ERROR] Normal click failed: {e}, using JavaScript")
-                driver.execute_script("arguments[0].click();", agree_checkbox)
-                print("[INFO] Attempted to check AGREE checkbox with JavaScript")
+                driver.execute_script("arguments[0].checked = true;", agree_checkbox)
+                print("[INFO] Set AGREE checkbox with JavaScript")
 
             # Verify the checkbox is checked
             time.sleep(1)  # Brief wait to ensure state updates
@@ -336,6 +340,9 @@ def book_parking(driver):
             else:
                 print("[ERROR] AGREE checkbox is not checked. Please ensure the checkbox is ticked manually, then restart the script.")
                 driver.save_screenshot(f"{screenshot_dir}/agree_not_checked.png")
+                # Capture additional debug info
+                element_state = driver.execute_script("return arguments[0].style.display;", agree_checkbox)
+                print(f"[DEBUG] Checkbox display state: {element_state}")
                 return False  # Fail the run to require manual intervention
 
         else:
