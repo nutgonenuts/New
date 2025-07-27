@@ -13,7 +13,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException,
 
 # Load environment variables
 def load_environment():
-    if os.path.exists(".env"):
+    if os.exists(".env"):
         load_dotenv()
         print("[INFO] Loaded .env file")
     else:
@@ -240,24 +240,23 @@ def book_parking(driver):
         print("[INFO] Scrolled to end of modal content")
         time.sleep(1)  # Allow UI to update
 
-        # Check "I Agree" checkbox with retry
+        # Check "I Agree" button with retry
         max_attempts = 3
         for attempt in range(max_attempts):
-            agree_checkbox = safe_find(driver, By.XPATH, "//input[@type='checkbox']", timeout=20, description="I Agree checkbox")
-            if agree_checkbox and agree_checkbox.is_enabled():
-                if not agree_checkbox.is_selected():
-                    agree_checkbox.click()
-                print(f"[INFO] Checked I Agree checkbox on attempt {attempt + 1}")
-                driver.save_screenshot(f"{screenshot_dir}/agree_checked_{attempt + 1}.png")
+            agree_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'I Agree')]", timeout=20, description="I Agree button")
+            if agree_button and agree_button.is_enabled():
+                agree_button.click()
+                print(f"[INFO] Clicked I Agree button on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/agree_clicked_{attempt + 1}.png")
                 break
             else:
-                print(f"[ERROR] I Agree checkbox not found or not enabled on attempt {attempt + 1}")
+                print(f"[ERROR] I Agree button not found or not enabled on attempt {attempt + 1}")
                 driver.save_screenshot(f"{screenshot_dir}/agree_not_found_{attempt + 1}.png")
                 if attempt < max_attempts - 1:
                     time.sleep(2)  # Wait before retry
                     driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", modal_content)  # Scroll again
         else:
-            print("[ERROR] Failed to find or enable I Agree checkbox after all attempts")
+            print("[ERROR] Failed to find or enable I Agree button after all attempts")
             driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
             return False
 
