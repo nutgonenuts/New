@@ -13,7 +13,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException,
 
 # Load environment variables
 def load_environment():
-    if os.path.exists(".env"):  # Fixed typo: os.path.exists() instead of os.exists()
+    if os.exists(".env"):
         load_dotenv()
         print("[INFO] Loaded .env file")
     else:
@@ -250,4 +250,80 @@ def book_parking(driver):
                 driver.save_screenshot(f"{screenshot_dir}/agree_clicked_{attempt + 1}.png")
                 break
             else:
-                print(f"[ERROR] I
+                print(f"[ERROR] I Agree button not found or not enabled on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/agree_not_found_{attempt + 1}.png")
+                if attempt < max_attempts - 1:
+                    time.sleep(2)  # Wait before retry
+                    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", modal_content)  # Scroll again
+        else:
+            print("[ERROR] Failed to find or enable I Agree button after all attempts")
+            driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
+            return False
+
+        # Click CONFIRM
+        confirm_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'CONFIRM') or contains(text(), 'Confirm')]", timeout=10, description="Confirm button")
+        if confirm_button:
+            confirm_button.click()
+            print("[INFO] Clicked Confirm button")
+            driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
+            time.sleep(1)
+        else:
+            print("[ERROR] Confirm button not found")
+            driver.save_screenshot(f"{screenshot_dir}/confirm_not_found.png")
+            return False
+
+        # Wait for booking confirmation
+        try:
+            WebDriverWait(driver, 20).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]")),
+                    EC.url_contains("confirmation")
+                )
+            )
+            print("[SUCCESS] Booking confirmed")
+            driver.save_screenshot(f"{screenshot_dir}/booking_confirmed.png")
+            return True
+        except TimeoutException:
+            try:
+                alert = driver.switch_to.alert
+                alert.accept()
+                print("[INFO] Handled alert for booking confirmation")
+                driver.save_screenshot(f"{screenshot_dir}/booking_alert_handled.png")
+                return True
+            except NoAlertPresentException:
+                print("[ERROR] No confirmation or alert found after Confirm click")
+                driver.save_screenshot(f"{screenshot_dir}/booking_failed.png")
+                return False
+
+    except Exception as e:
+        print(f"[ERROR] Booking failed: {e}\n{traceback.format_exc()}")
+        driver.save_screenshot(f"{screenshot_dir}/booking_error.png")
+        return False
+
+# Main execution
+def main():
+    global screenshot_dir
+    screenshot_dir = f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%SS')}"
+    os.makedirs(screenshot_dir, exist_ok=True)
+    driver = None
+    try:
+        email, password = load_environment()
+        driver = init_driver()
+        if try_login(driver, email, password):
+            if book_parking(driver):
+                print("[SUCCESS] Parking booked successfully")
+            else:
+                print("[ERROR] Failed to book parking")
+        else:
+            print("[ERROR] Login failed")
+    except Exception as e:
+        print(f"[ERROR] Unexpected error: {e}\n{traceback.format_exc()}")
+        if driver:
+            driver.save_screenshot(f"{screenshot_dir}/main_error.png")
+    finally:
+        if driver:
+            driver.quit()
+            print("[INFO] ChromeDriver closed")
+
+if __name__ == "__main__":
+    main()
