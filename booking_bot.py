@@ -23,7 +23,7 @@ def load_environment():
     password = os.getenv("PASSWORD")
     
     if not email or not password:
-        raise ValueError("EMAIL or PASSWORD not set in .env file or environment variables")
+        raise ValueValue("EMAIL or PASSWORD not set in .env file or environment variables")
     
     print("[INFO] EMAIL and PASSWORD retrieved successfully")
     return email, password
@@ -167,7 +167,7 @@ def book_parking(driver):
         print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
         target_sunday = None
         for target_date in target_dates:
-            target_date_str = target_date.strftime("%Y-%m-%d")  # e.g., 2025-07-27
+            target_date_str = target_date.strftime("%Y-%m-d")  # e.g., 2025-07-27
             alt_date_str = target_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
             alt_date_str2 = target_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
             alt_date_str3 = target_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
@@ -234,60 +234,54 @@ def book_parking(driver):
         print("[INFO] Clicked first reserve button")
         driver.save_screenshot(f"{screenshot_dir}/first_reserve_clicked.png")
 
-        # Step 2: Click second Reserve button with retry
+        # Step 2: Wait for second reserve option to appear
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
+        )
+        print("[INFO] Second reserve option detected")
+
+        # Step 2: Click second Reserve button with retry and modal handling
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
-                )
-                print(f"[INFO] Second reserve option detected on attempt {attempt + 1}")
+                # Dismiss any overlay/modal if present
+                try:
+                    modal = driver.find_element(By.CSS_SELECTOR, ".modal.black-overlay")  # Based on earlier logs
+                    if modal.is_displayed():
+                        driver.execute_script("arguments[0].style.display = 'none';", modal)  # Hide it via JS if close button fails
+                        print(f"[INFO] Dismissed modal overlay on attempt {attempt + 1}")
+                except NoSuchElementException:
+                    print(f"[INFO] No modal to dismiss on attempt {attempt + 1}")
 
-                second_reserve_button_locators = [
-                    (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
-                    (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
-                    (By.CSS_SELECTOR, "div.pull-right.p-a-sm button:nth-child(3)"),
-                    (By.XPATH, ".//ancestor::div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(text(), 'reserve')]"),
-                    (By.XPATH, ".//ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::div[contains(@class, 'pull-right')]/button[contains(@class, 'md-btn md-flat m-r') and contains(text(), 'reserve')]"),
-                ]
-
-                second_reserve_button = None
-                for by, value in second_reserve_button_locators:
-                    try:
-                        second_reserve_button = driver.find_element(by, value)
-                        if second_reserve_button:
-                            if second_reserve_button.get_attribute("disabled") or "disabled" in second_reserve_button.get_attribute("class").lower():
-                                print("[INFO] Second reserve button is disabled")
-                                continue
-                            print(f"[INFO] Found second reserve button: {value}, enabled: {not second_reserve_button.get_attribute('disabled')}")
-                            break
-                    except NoSuchElementException:
-                        print(f"[INFO] Second reserve button not found with locator: {value}")
-
-                if not second_reserve_button:
+                second_reserve_button = safe_find(driver, By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]", description="second reserve button")
+                if second_reserve_button:
+                    second_reserve_button.click()
+                    print(f"[INFO] Clicked second reserve button on attempt {attempt + 1}")
+                    driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked_{attempt + 1}.png")
+                    break
+                else:
                     print(f"[ERROR] Second reserve button not found on attempt {attempt + 1}")
                     driver.save_screenshot(f"{screenshot_dir}/second_reserve_not_found_{attempt + 1}.png")
-                    continue
-
-                second_reserve_button.click()
-                print(f"[INFO] Clicked second reserve button on attempt {attempt + 1}")
-                driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked_{attempt + 1}.png")
-                break
+                    if attempt < max_attempts - 1:
+                        time.sleep(2)
             except ElementClickInterceptedException:
                 print(f"[ERROR] Second reserve button click intercepted on attempt {attempt + 1}")
                 driver.save_screenshot(f"{screenshot_dir}/second_reserve_intercepted_{attempt + 1}.png")
+                if attempt < max_attempts - 1:
+                    time.sleep(2)
             except TimeoutException:
                 print(f"[ERROR] Second reserve option timed out on attempt {attempt + 1}")
                 driver.save_screenshot(f"{screenshot_dir}/second_reserve_timeout_{attempt + 1}.png")
-
-        if attempt == max_attempts - 1:
+                if attempt < max_attempts - 1:
+                    time.sleep(2)
+        else:
             print("[ERROR] Failed to click second reserve button after all attempts")
             return False
 
-        # Step 3: Checked AGREE checkbox with retry
+        # Step 3: Check AGREE checkbox with retry
         max_attempts = 3
         for attempt in range(max_attempts):
-            agree_checkbox = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]", 10, "AGREE checkbox")
+            agree_checkbox = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]", 30, "AGREE checkbox")  # Increased timeout
             if agree_checkbox:
                 driver.execute_script("arguments[0].click();", agree_checkbox)  # Use JS to click checkbox
                 print(f"[INFO] Checked AGREE checkbox on attempt {attempt + 1}")
