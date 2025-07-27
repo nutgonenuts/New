@@ -9,7 +9,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException, NoAlertPresentException
 
 # Load environment variables
 def load_environment():
@@ -153,14 +153,10 @@ def book_parking(driver):
         print("[INFO] Dashboard loaded")
         driver.save_screenshot(f"{screenshot_dir}/dashboard.png")
 
-        # Calculate target Sunday (today or next Sunday)
+        # Calculate target Sundays for 2-week lookahead
         today = datetime.now()
-        days_to_sunday = (6 - today.weekday()) % 7
-        target_sunday_date = today if days_to_sunday == 0 else today + timedelta(days=days_to_sunday)
-        target_date_str = target_sunday_date.strftime("%Y-%m-%d")  # e.g., 2025-07-27
-        alt_date_str = target_sunday_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
-        alt_date_str2 = target_sunday_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
-        alt_date_str3 = target_sunday_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
+        target_dates = [today + timedelta(days=i * 7) for i in range(3)]  # Today + 2 more Sundays (2 weeks)
+        target_dates = [d for d in target_dates if d >= today]  # Ensure no past dates
 
         sunday_elements = driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday') and contains(@style, 'font-size: 24px')]")
         if not sunday_elements:
@@ -170,31 +166,30 @@ def book_parking(driver):
 
         print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
         target_sunday = None
-        for attempt in range(2):  # Try today, then next Sunday
-            current_target_date = target_sunday_date if attempt == 0 else target_sunday_date + timedelta(days=7)
-            target_date_str = current_target_date.strftime("%Y-%m-%d")
-            alt_date_str = current_target_date.strftime("%B %d, %Y")
-            alt_date_str2 = current_target_date.strftime("%d/%m/%Y")
-            alt_date_str3 = current_target_date.strftime("%d %b %Y")
+        for target_date in target_dates:
+            target_date_str = target_date.strftime("%Y-%m-%d")  # e.g., 2025-07-27
+            alt_date_str = target_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
+            alt_date_str2 = target_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
+            alt_date_str3 = target_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
 
             for sunday in sunday_elements:
                 try:
-                    # Broader date locator
                     date_element = sunday.find_element(By.XPATH, "./preceding-sibling::* | ./parent::*//span | ./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]//span[contains(@class, 'pull-left')]")
                     date_text = date_element.text.strip()
-                    print(f"[INFO] Sunday date: {date_text}")
+                    print(f"[INFO] Checking Sunday date: {date_text} against {target_date_str}")
                     if any(fmt in date_text for fmt in [target_date_str, alt_date_str, alt_date_str2, alt_date_str3]):
                         target_sunday = sunday
-                        print(f"[INFO] Selected Sunday: {date_text}")
+                        print(f"[INFO] Selected Sunday: {date_text} for {target_date_str}")
                         break
                 except NoSuchElementException:
                     print("[INFO] No date found for Sunday element")
-
+                if target_sunday:
+                    break
             if target_sunday:
                 break
 
         if not target_sunday:
-            print(f"[ERROR] No matching Sunday element found for dates: {target_date_str}, {alt_date_str}, {alt_date_str2}, {alt_date_str3}")
+            print(f"[ERROR] No matching Sunday element found for any date in lookahead")
             print("[INFO] Falling back to first Sunday element")
             target_sunday = sunday_elements[0] if sunday_elements else None
             if not target_sunday:
@@ -212,14 +207,13 @@ def book_parking(driver):
         reserve_button = None
         for by, value in reserve_button_locators:
             try:
-                # Use parent container to ensure context
                 parent = target_sunday.find_element(By.XPATH, "./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]")
                 reserve_button = parent.find_element(by, value)
                 if reserve_button:
                     if reserve_button.get_attribute("disabled") or "disabled" in reserve_button.get_attribute("class").lower():
                         print("[INFO] Reserve button is disabled for this Sunday")
                         continue
-                    print(f"[INFO] Found reserve button: {value}")
+                    print(f"[INFO] Found reserve button: {value}, enabled: {not reserve_button.get_attribute('disabled')}")
                     break
             except NoSuchElementException:
                 print(f"[INFO] Reserve button not found with locator: {value}")
@@ -240,19 +234,23 @@ def book_parking(driver):
         driver.save_screenshot(f"{screenshot_dir}/reserve_clicked.png")
 
         try:
-            confirm_button = safe_find(
-                driver,
-                By.XPATH,
-                "//button[contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'confirm') or contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'ok') or contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'submit')]",
-                timeout=10,
-                description="confirm button"
+            # Broaden confirmation check
+            WebDriverWait(driver, 20).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'confirm') or contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'ok') or contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'submit')]")),
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button")),
+                    EC.presence_of_element_located((By.XPATH, "//form//button[@type='submit']")),
+                    EC.url_contains("confirmation")
+                )
             )
+            # Try to find and click the first available button in modal/form
+            confirm_button = driver.find_elements(By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button | //form//button[@type='submit']")
             if confirm_button:
-                confirm_button.click()
-                print("[INFO] Clicked confirmation button")
+                confirm_button[0].click()
+                print("[INFO] Clicked confirmation button in modal/form")
                 driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
         except TimeoutException:
-            print("[INFO] No confirmation button found")
+            print("[INFO] No confirmation button, modal, form, or URL change found")
 
         try:
             WebDriverWait(driver, 20).until(
@@ -271,8 +269,8 @@ def book_parking(driver):
                 print("[INFO] Handled alert for booking confirmation")
                 driver.save_screenshot(f"{screenshot_dir}/booking_alert_handled.png")
                 return True
-            except NoSuchElementException:
-                print("[ERROR] No confirmation or alert found")
+            except NoAlertPresentException:
+                print("[ERROR] No confirmation, modal, form, or alert found")
                 driver.save_screenshot(f"{screenshot_dir}/booking_failed.png")
                 return False
 
