@@ -56,7 +56,7 @@ def safe_find(driver, by, value, timeout=20, description="element"):
         print(f"[INFO] Found {description}: {value}")
         return element
     except TimeoutException:
-        print(f"[ERROR] Timeout waiting for {description}: {value}")
+        print(f"[ERROR] Timeout waiting for {description]: {value}")
         return None
 
 # Login to Parkalot
@@ -139,7 +139,7 @@ def try_login(driver, email, password, max_attempts=2):
 
     print("[ERROR] All login attempts failed")
     driver.save_screenshot(f"{screenshot_dir}/login_failed.png")
-    return False  # Line 57 should be here, inside the function
+    return False
 
 # Book parking for the next available Sunday
 def book_parking(driver):
@@ -290,7 +290,7 @@ def book_parking(driver):
 
         # Step 3: Check AGREE checkbox
         agree_checkbox_locators = [
-            (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(text(), 'I Agree')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"),
+            (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(., 'I Agree')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"),
             (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"),
             (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//div[contains(@class, 'MuiBox-root')]//label//input[@type='checkbox']"),
             (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']"),  # Fallback
@@ -298,7 +298,7 @@ def book_parking(driver):
 
         agree_checkbox = None
         for by, value in agree_checkbox_locators:
-            agree_checkbox = safe_find(driver, by, value, timeout=15, description="AGREE checkbox")  # Increased timeout to 15s
+            agree_checkbox = safe_find(driver, by, value, timeout=20, description="AGREE checkbox")  # Increased timeout to 20s
             if agree_checkbox:
                 break
 
@@ -306,31 +306,38 @@ def book_parking(driver):
             # Scroll to the end of the modal to satisfy the requirement
             modal = driver.find_element(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]")
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", modal)
-            time.sleep(2)  # Increased wait to ensure scroll completes
+            time.sleep(3)  # Increased wait to 3s to ensure scroll completes
 
+            # Wait for the label containing the checkbox to be visible
+            WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(., 'I Agree')]")))
+            
             # Wait for checkbox to be clickable after scroll
-            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(text(), 'I Agree')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]")))
+            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(., 'I Agree')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]")))
             
             # Ensure the checkbox is visible and scroll into view
             driver.execute_script("arguments[0].scrollIntoView(true);", agree_checkbox)
             time.sleep(1)  # Brief wait for scroll to complete
 
-            # Check if checkbox is already checked or disabled
-            is_checked = agree_checkbox.get_attribute("checked")
-            is_disabled = agree_checkbox.get_attribute("disabled")
-            if is_checked or is_disabled:
-                print(f"[INFO] AGREE checkbox is already checked: {is_checked}, disabled: {is_disabled}")
-            else:
-                try:
-                    # Attempt to click normally
-                    agree_checkbox.click()
-                    print("[INFO] Checked AGREE checkbox with normal click")
-                except Exception as e:
-                    print(f"[ERROR] Normal click failed: {e}, using JavaScript")
-                    driver.execute_script("arguments[0].click();", agree_checkbox)
-                    print("[INFO] Checked AGREE checkbox with JavaScript")
+            # Attempt to check the checkbox
+            try:
+                agree_checkbox.click()
+                print("[INFO] Attempted to check AGREE checkbox with normal click")
+            except Exception as e:
+                print(f"[ERROR] Normal click failed: {e}, using JavaScript")
+                driver.execute_script("arguments[0].click();", agree_checkbox)
+                print("[INFO] Attempted to check AGREE checkbox with JavaScript")
 
-            driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
+            # Verify the checkbox is checked
+            time.sleep(1)  # Brief wait to ensure state updates
+            is_checked = agree_checkbox.get_attribute("checked")
+            if is_checked:
+                print("[INFO] AGREE checkbox is confirmed checked")
+                driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
+            else:
+                print("[ERROR] AGREE checkbox is not checked. Please ensure the checkbox is ticked manually, then restart the script.")
+                driver.save_screenshot(f"{screenshot_dir}/agree_not_checked.png")
+                return False  # Fail the run to require manual intervention
+
         else:
             print("[ERROR] AGREE checkbox not found")
             # Capture the entire modal HTML and screenshot for debugging
@@ -362,61 +369,4 @@ def book_parking(driver):
                     time.sleep(2)  # Wait for the button to become enabled
         else:
             print("[ERROR] Failed to find or enable Confirm button after all attempts")
-            driver.save_screenshot(f"{screenshot_dir}/confirm_not_found.png")
-            return False
-
-        # Wait for booking confirmation
-        try:
-            WebDriverWait(driver, 20).until(
-                EC.any_of(
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]")),
-                    EC.url_contains("confirmation")
-                )
-            )
-            print("[SUCCESS] Booking confirmed")
-            driver.save_screenshot(f"{screenshot_dir}/booking_confirmed.png")
-            return True
-        except TimeoutException:
-            try:
-                alert = driver.switch_to.alert
-                alert.accept()
-                print("[INFO] Handled alert for booking confirmation")
-                driver.save_screenshot(f"{screenshot_dir}/booking_alert_handled.png")
-                return True
-            except NoAlertPresentException:
-                print("[ERROR] No confirmation or alert found after Confirm click")
-                driver.save_screenshot(f"{screenshot_dir}/booking_failed.png")
-                return False
-
-    except Exception as e:
-        print(f"[ERROR] Booking failed: {e}\n{traceback.format_exc()}")
-        driver.save_screenshot(f"{screenshot_dir}/booking_error.png")
-        return False
-
-# Main execution
-def main():
-    global screenshot_dir
-    screenshot_dir = f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%SS')}"
-    os.makedirs(screenshot_dir, exist_ok=True)
-    driver = None
-    try:
-        email, password = load_environment()
-        driver = init_driver()
-        if try_login(driver, email, password):
-            if book_parking(driver):
-                print("[SUCCESS] Parking booked successfully")
-            else:
-                print("[ERROR] Failed to book parking")
-        else:
-            print("[ERROR] Login failed")
-    except Exception as e:
-        print(f"[ERROR] Unexpected error: {e}\n{traceback.format_exc()}")
-        if driver:
-            driver.save_screenshot(f"{screenshot_dir}/main_error.png")
-    finally:
-        if driver:
-            driver.quit()
-            print("[INFO] ChromeDriver closed")
-
-if __name__ == "__main__":
-    main()
+            driver.save_screenshot(f
