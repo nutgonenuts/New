@@ -1,3 +1,147 @@
+import os
+import time
+import traceback
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+import chromedriver_autoinstaller
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException, NoAlertPresentException
+
+# Load environment variables
+def load_environment():
+    if os.path.exists(".env"):
+        load_dotenv()
+        print("[INFO] Loaded .env file")
+    else:
+        print("[INFO] No .env file found, checking direct environment variables")
+    
+    email = os.getenv("EMAIL")
+    password = os.getenv("PASSWORD")
+    
+    if not email or not password:
+        raise ValueError("EMAIL or PASSWORD not set in .env file or environment variables")
+    
+    print("[INFO] EMAIL and PASSWORD retrieved successfully")
+    return email, password
+
+# Initialize ChromeDriver
+def init_driver():
+    chromedriver_autoinstaller.install()
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--enable-javascript")
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
+        print("[INFO] ChromeDriver initialized successfully")
+        return driver
+    except WebDriverException as e:
+        print(f"[ERROR] Failed to initialize ChromeDriver: {e}\n{traceback.format_exc()}")
+        raise
+
+# Safe element finder with logging
+def safe_find(driver, by, value, timeout=20, description="element"):
+    try:
+        element = WebDriverWait(driver, timeout).until(
+            EC.element_to_be_clickable((by, value))
+        )
+        print(f"[INFO] Found {description}: {value}")
+        return element
+    except TimeoutException:
+        print(f"[ERROR] Timeout waiting for {description}: {value}")
+        return None
+
+# Login to Parkalot
+def try_login(driver, email, password, max_attempts=2):
+    driver.get("https://app.parkalot.io/login")
+    print("[INFO] Navigated to login page")
+
+    email_locators = [
+        (By.ID, "email"),
+        (By.NAME, "email"),
+        (By.XPATH, "//input[@type='email']"),
+        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
+        (By.CLASS_NAME, "form-control-sm.md-input"),
+        (By.XPATH, "//input[contains(@class, 'md-input') and @type='email']"),
+        (By.XPATH, "//input[@name='email' or @id='email']"),
+    ]
+    pass_locators = [
+        (By.ID, "password"),
+        (By.NAME, "password"),
+        (By.XPATH, "//input[@type='password']"),
+        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
+        (By.CLASS_NAME, "form-control-sm.md-input"),
+        (By.XPATH, "//input[contains(@class, 'md-input') and @type='password']"),
+        (By.XPATH, "//input[@name='password' or @id='password']"),
+    ]
+    login_button_locators = [
+        (By.ID, "login"),
+        (By.XPATH, "//button[@type='submit']"),
+        (By.XPATH, "//button[contains(text(), 'Log In')]"),
+        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
+        (By.CLASS_NAME, "btn.btn-block.md-raised.primary"),
+        (By.XPATH, "//button[@type='button']"),
+        (By.XPATH, "//button[contains(@class, 'md-btn') and contains(text(), 'LOG IN')]"),
+        (By.XPATH, "//button[@type='submit' or contains(@class, 'login')]"),
+    ]
+
+    for attempt in range(max_attempts):
+        print(f"[INFO] Login attempt {attempt + 1}/{max_attempts}")
+        email_field = pass_field = login_button = None
+
+        for by, value in email_locators:
+            email_field = safe_find(driver, by, value, description="email field")
+            if email_field:
+                break
+        for by, value in pass_locators:
+            pass_field = safe_find(driver, by, value, description="password field")
+            if pass_field:
+                break
+        for by, value in login_button_locators:
+            login_button = safe_find(driver, by, value, description="login button")
+            if login_button:
+                break
+
+        if not all([email_field, pass_field, login_button]):
+            print(f"[ERROR] Missing login elements in attempt {attempt + 1}")
+            driver.save_screenshot(f"{screenshot_dir}/login_attempt_{attempt + 1}_failed.png")
+            continue
+
+        try:
+            email_field.clear()
+            email_field.send_keys(email)
+            pass_field.clear()
+            pass_field.send_keys(password)
+            login_button.click()
+            print("[INFO] Submitted login form")
+
+            WebDriverWait(driver, 20).until(
+                EC.any_of(
+                    EC.url_contains("dashboard"),
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Dashboard') or contains(text(), 'Welcome')]")),
+                    EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Sunday')]"))
+                )
+            )
+            print("[INFO] Login successful. URL:", driver.current_url)
+            driver.save_screenshot(f"{screenshot_dir}/login_success.png")
+            return True
+        except TimeoutException:
+            print(f"[ERROR] Login failed in attempt {attempt + 1}")
+            driver.save_screenshot(f"{screenshot_dir}/login_attempt_{attempt + 1}_failed.png")
+
+    print("[ERROR] All login attempts failed")
+    driver.save_screenshot(f"{screenshot_dir}/login_failed.png")
+    return False
+
+# Book parking for the next available Sunday
 def book_parking(driver):
     try:
         # Wait for dashboard to be fully interactive
@@ -89,26 +233,11 @@ def book_parking(driver):
         print("[INFO] Clicked first reserve button")
         driver.save_screenshot(f"{screenshot_dir}/first_reserve_clicked.png")
 
-        # Step 2: Wait for second reserve option and handle modal
-        try:
-            WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
-            )
-            # Try to close any modal overlay
-            try:
-                modal_close = driver.find_element(By.XPATH, "//div[contains(@class, 'modal black-overlay')]//button[contains(@class, 'close')]")
-                modal_close.click()
-                WebDriverWait(driver, 5).until_not(
-                    EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'modal black-overlay')]"))
-                )
-                print("[INFO] Closed modal overlay")
-            except NoSuchElementException:
-                print("[INFO] No modal overlay found to close")
-            print("[INFO] Second reserve option detected")
-        except TimeoutException:
-            print("[ERROR] Second reserve option timed out")
-            driver.save_screenshot(f"{screenshot_dir}/second_reserve_timeout.png")
-            return False
+        # Step 2: Wait for second reserve option
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
+        )
+        print("[INFO] Second reserve option detected")
 
         # Step 2: Click second Reserve button
         second_reserve_button_locators = [
@@ -140,22 +269,14 @@ def book_parking(driver):
         print("[INFO] Clicked second reserve button")
         driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked.png")
 
-        # Step 3: Wait for AGREE modal with retry
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            agree_checkbox = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]", 20, "AGREE checkbox")
-            if agree_checkbox:
-                driver.execute_script("arguments[0].click();", agree_checkbox)
-                print(f"[INFO] Checked AGREE checkbox on attempt {attempt + 1}")
-                driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
-                break
-            else:
-                print(f"[ERROR] AGREE checkbox not found on attempt {attempt + 1}")
-                driver.save_screenshot(f"{screenshot_dir}/agree_not_found_{attempt + 1}.png")
-                if attempt < max_attempts - 1:
-                    time.sleep(3)  # Increased wait between retries
+        # Step 3: Wait for AGREE modal
+        agree_checkbox = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]", 20, "AGREE checkbox")
+        if agree_checkbox:
+            driver.execute_script("arguments[0].click();", agree_checkbox)
+            print("[INFO] Checked AGREE checkbox")
+            driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
         else:
-            print("[ERROR] Failed to find AGREE checkbox after all attempts")
+            print("[ERROR] AGREE checkbox not found")
             driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
             return False
 
@@ -205,3 +326,31 @@ def book_parking(driver):
         print(f"[ERROR] Booking failed: {e}\n{traceback.format_exc()}")
         driver.save_screenshot(f"{screenshot_dir}/booking_error.png")
         return False
+
+# Main execution
+def main():
+    global screenshot_dir
+    screenshot_dir = f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%SS')}"
+    os.makedirs(screenshot_dir, exist_ok=True)
+    driver = None
+    try:
+        email, password = load_environment()
+        driver = init_driver()
+        if try_login(driver, email, password):
+            if book_parking(driver):
+                print("[SUCCESS] Parking booked successfully")
+            else:
+                print("[ERROR] Failed to book parking")
+        else:
+            print("[ERROR] Login failed")
+    except Exception as e:
+        print(f"[ERROR] Unexpected error: {e}\n{traceback.format_exc()}")
+        if driver:
+            driver.save_screenshot(f"{screenshot_dir}/main_error.png")
+    finally:
+        if driver:
+            driver.quit()
+            print("[INFO] ChromeDriver closed")
+
+if __name__ == "__main__":
+    main()
