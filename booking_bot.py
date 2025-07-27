@@ -13,7 +13,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException,
 
 # Load environment variables
 def load_environment():
-    if os.exists(".env"):
+    if os.path.exists(".env"):
         load_dotenv()
         print("[INFO] Loaded .env file")
     else:
@@ -167,7 +167,7 @@ def book_parking(driver):
         print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
         target_sunday = None
         for target_date in target_dates:
-            target_date_str = target_date.strftime("%Y-%m-%d")  # Fixed typo
+            target_date_str = target_date.strftime("%Y-%m-%d")  # e.g., 2025-07-27
             alt_date_str = target_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
             alt_date_str2 = target_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
             alt_date_str3 = target_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
@@ -197,78 +197,112 @@ def book_parking(driver):
                 return False
 
         # Step 1: Click first Reserve button
-        reserve_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'reserve')]", timeout=20, description="first reserve button")
-        if reserve_button:
-            reserve_button.click()
-            print("[INFO] Clicked first reserve button")
-            driver.save_screenshot(f"{screenshot_dir}/first_reserve_clicked.png")
-            time.sleep(1)  # Allow UI to update
-        else:
-            print("[ERROR] First reserve button not found")
+        reserve_button_locators = [
+            (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
+            (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
+            (By.CSS_SELECTOR, "div.pull-right.p-a-sm button:nth-child(3)"),
+            (By.XPATH, ".//ancestor::div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(text(), 'reserve')]"),
+            (By.XPATH, ".//ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::div[contains(@class, 'pull-right')]/button[contains(@class, 'md-btn md-flat m-r') and contains(text(), 'reserve')]"),
+        ]
+
+        reserve_button = None
+        for by, value in reserve_button_locators:
+            try:
+                parent = target_sunday.find_element(By.XPATH, "./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]")
+                reserve_button = parent.find_element(by, value)
+                if reserve_button:
+                    if reserve_button.get_attribute("disabled") or "disabled" in reserve_button.get_attribute("class").lower():
+                        print("[INFO] Reserve button is disabled for this Sunday")
+                        continue
+                    print(f"[INFO] Found first reserve button: {value}, enabled: {not reserve_button.get_attribute('disabled')}")
+                    break
+            except NoSuchElementException:
+                print(f"[INFO] First reserve button not found with locator: {value}")
+
+        if not reserve_button:
+            print("[ERROR] First reserve button not found or all buttons disabled")
             driver.save_screenshot(f"{screenshot_dir}/reserve_not_found.png")
             return False
 
-        # Step 2: Handle Pick time modal - click RESERVE
-        WebDriverWait(driver, 40).until(  # Increased timeout
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'modal')]"))
-        )
-        print("[INFO] Pick time modal detected")
-        driver.save_screenshot(f"{screenshot_dir}/pick_time_modal.png")
-
-        reserve_button_in_modal = safe_find(driver, By.XPATH, "//button[contains(text(), 'RESERVE') or contains(text(), 'Reserve')]", timeout=40, description="reserve in modal")
-        if reserve_button_in_modal:
-            reserve_button_in_modal.click()
-            print("[INFO] Clicked RESERVE in Pick time modal")
-            driver.save_screenshot(f"{screenshot_dir}/reserve_in_modal_clicked.png")
-            time.sleep(2)  # Allow UI to update
-        else:
-            print("[ERROR] RESERVE button in Pick time modal not found. Page source:")
-            print(driver.page_source[:500])  # Log first 500 chars of page source for debugging
-            driver.save_screenshot(f"{screenshot_dir}/reserve_in_modal_not_found.png")
+        # Check for no spaces available before clicking
+        if driver.find_elements(By.XPATH, "//*[contains(text(), 'No spaces available') or contains(text(), 'Fully booked')]"):
+            print("[ERROR] No parking spaces available for this Sunday")
+            driver.save_screenshot(f"{screenshot_dir}/no_spaces_available.png")
             return False
 
-        # Step 3: Handle Parking Rules modal - scroll to end, check "I Agree", click CONFIRM
-        WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Parking Rules')]"))
+        reserve_button.click()
+        print("[INFO] Clicked first reserve button")
+        driver.save_screenshot(f"{screenshot_dir}/first_reserve_clicked.png")
+
+        # Wait for second reserve option to appear
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
         )
-        print("[INFO] Parking Rules modal detected")
-        driver.save_screenshot(f"{screenshot_dir}/parking_rules_modal.png")
+        print("[INFO] Second reserve option detected")
 
-        # Scroll to the end of the modal content
-        modal_content = driver.find_element(By.XPATH, "//div[contains(@class, 'modal') or contains(@class, 'dialog')]//div[contains(@class, 'content') or contains(@class, 'body')]")
-        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", modal_content)
-        print("[INFO] Scrolled to end of modal content")
-        time.sleep(1)  # Allow UI to update
+        # Step 2: Click second Reserve button
+        second_reserve_button_locators = [
+            (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
+            (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
+            (By.CSS_SELECTOR, "div.modal button, div.dialog button"),
+            (By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button[contains(text(), 'reserve')]"),
+        ]
 
-        # Check "I Agree" button with retry
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            agree_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'I Agree')]", timeout=20, description="I Agree button")
-            if agree_button and agree_button.is_enabled():
-                agree_button.click()
-                print(f"[INFO] Clicked I Agree button on attempt {attempt + 1}")
-                driver.save_screenshot(f"{screenshot_dir}/agree_clicked_{attempt + 1}.png")
-                break
-            else:
-                print(f"[ERROR] I Agree button not found or not enabled on attempt {attempt + 1}")
-                driver.save_screenshot(f"{screenshot_dir}/agree_not_found_{attempt + 1}.png")
-                if attempt < max_attempts - 1:
-                    time.sleep(2)  # Wait before retry
-                    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", modal_content)  # Scroll again
+        second_reserve_button = None
+        for by, value in second_reserve_button_locators:
+            try:
+                second_reserve_button = driver.find_element(by, value)
+                if second_reserve_button:
+                    if second_reserve_button.get_attribute("disabled") or "disabled" in second_reserve_button.get_attribute("class").lower():
+                        print("[INFO] Second reserve button is disabled")
+                        continue
+                    print(f"[INFO] Found second reserve button: {value}, enabled: {not second_reserve_button.get_attribute('disabled')}")
+                    break
+            except NoSuchElementException:
+                print(f"[INFO] Second reserve button not found with locator: {value}")
+
+        if not second_reserve_button:
+            print("[ERROR] Second reserve button not found or disabled")
+            driver.save_screenshot(f"{screenshot_dir}/second_reserve_not_found.png")
+            return False
+
+        second_reserve_button.click()
+        print("[INFO] Clicked second reserve button")
+        driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked.png")
+
+        # Wait for AGREE modal to appear
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']"))
+        )
+        print("[INFO] AGREE modal detected")
+
+        # Step 3: Check AGREE checkbox
+        agree_checkbox = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]", 10, "AGREE checkbox")
+        if agree_checkbox:
+            driver.execute_script("arguments[0].click();", agree_checkbox)  # Use JS to click checkbox
+            print("[INFO] Checked AGREE checkbox")
+            driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
         else:
-            print("[ERROR] Failed to find or enable I Agree button after all attempts")
+            print("[ERROR] AGREE checkbox not found")
             driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
             return False
 
-        # Click CONFIRM
-        confirm_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'CONFIRM') or contains(text(), 'Confirm')]", timeout=10, description="Confirm button")
-        if confirm_button:
-            confirm_button.click()
-            print("[INFO] Clicked Confirm button")
-            driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
-            time.sleep(1)
+        # Step 4: Click Confirm button with retry
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            confirm_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//button[contains(translate(text(), 'CONFIRM', 'confirm'), 'confirm')]", 10, "Confirm button")
+            if confirm_button:
+                confirm_button.click()
+                print(f"[INFO] Clicked Confirm button on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
+                break
+            else:
+                print(f"[ERROR] Confirm button not found on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/confirm_not_found_{attempt + 1}.png")
+                if attempt < max_attempts - 1:
+                    time.sleep(2)  # Wait before retry
         else:
-            print("[ERROR] Confirm button not found")
+            print("[ERROR] Failed to find Confirm button after all attempts")
             driver.save_screenshot(f"{screenshot_dir}/confirm_not_found.png")
             return False
 
