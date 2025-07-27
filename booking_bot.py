@@ -167,7 +167,7 @@ def book_parking(driver):
         print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
         target_sunday = None
         for target_date in target_dates:
-            target_date_str = target_date.strftime("%Y-%m-%d")  # Fixed the typo here
+            target_date_str = target_date.strftime("%Y-%m-%d")  # Fixed typo
             alt_date_str = target_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
             alt_date_str2 = target_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
             alt_date_str3 = target_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
@@ -197,7 +197,7 @@ def book_parking(driver):
                 return False
 
         # Step 1: Click first Reserve button
-        reserve_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'reserve')]")
+        reserve_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'reserve')]", timeout=20, description="first reserve button")
         if reserve_button:
             reserve_button.click()
             print("[INFO] Clicked first reserve button")
@@ -208,33 +208,53 @@ def book_parking(driver):
             driver.save_screenshot(f"{screenshot_dir}/reserve_not_found.png")
             return False
 
-        # Step 2: Handle Pick time modal - click RESERVE (no next day check as per user)
-        reserve_button_in_modal = safe_find(driver, By.XPATH, "//button[contains(text(), 'RESERVE')]", timeout=30)
+        # Step 2: Handle Pick time modal - click RESERVE
+        WebDriverWait(driver, 40).until(  # Increased timeout
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'modal')]"))
+        )
+        print("[INFO] Pick time modal detected")
+        driver.save_screenshot(f"{screenshot_dir}/pick_time_modal.png")
+
+        reserve_button_in_modal = safe_find(driver, By.XPATH, "//button[contains(text(), 'RESERVE') or contains(text(), 'Reserve')]", timeout=40, description="reserve in modal")
         if reserve_button_in_modal:
             reserve_button_in_modal.click()
             print("[INFO] Clicked RESERVE in Pick time modal")
             driver.save_screenshot(f"{screenshot_dir}/reserve_in_modal_clicked.png")
-            time.sleep(1)  # Allow UI to update
+            time.sleep(2)  # Allow UI to update
         else:
-            print("[ERROR] RESERVE button in Pick time modal not found")
+            print("[ERROR] RESERVE button in Pick time modal not found. Page source:")
+            print(driver.page_source[:500])  # Log first 500 chars of page source for debugging
             driver.save_screenshot(f"{screenshot_dir}/reserve_in_modal_not_found.png")
             return False
 
-        # Step 3: Handle Parking Rules modal - check "I Agree" and click CONFIRM
+        # Step 3: Handle Parking Rules modal - scroll to end, check "I Agree", click CONFIRM
         WebDriverWait(driver, 30).until(
             EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Parking Rules')]"))
         )
         print("[INFO] Parking Rules modal detected")
         driver.save_screenshot(f"{screenshot_dir}/parking_rules_modal.png")
 
-        agree_checkbox = driver.find_element(By.XPATH, "//input[@type='checkbox']")  # Simple locator
-        if not agree_checkbox.is_selected():
-            agree_checkbox.click()
-        print("[INFO] Checked I Agree checkbox")
-        driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
-        time.sleep(1)
+        # Scroll to the end of the modal content
+        modal_content = driver.find_element(By.XPATH, "//div[contains(@class, 'modal') or contains(@class, 'dialog')]//div[contains(@class, 'content') or contains(@class, 'body')]")
+        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", modal_content)
+        print("[INFO] Scrolled to end of modal content")
+        time.sleep(1)  # Allow UI to update
 
-        confirm_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'CONFIRM')]", timeout=10, description="Confirm button")
+        # Check "I Agree" checkbox
+        agree_checkbox = safe_find(driver, By.XPATH, "//input[@type='checkbox']", timeout=10, description="I Agree checkbox")
+        if agree_checkbox:
+            if not agree_checkbox.is_selected():
+                agree_checkbox.click()
+            print("[INFO] Checked I Agree checkbox")
+            driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
+            time.sleep(1)
+        else:
+            print("[ERROR] I Agree checkbox not found")
+            driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
+            return False
+
+        # Click CONFIRM
+        confirm_button = safe_find(driver, By.XPATH, "//button[contains(text(), 'CONFIRM') or contains(text(), 'Confirm')]", timeout=10, description="Confirm button")
         if confirm_button:
             confirm_button.click()
             print("[INFO] Clicked Confirm button")
