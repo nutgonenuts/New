@@ -141,11 +141,161 @@ def try_login(driver, email, password, max_attempts=2):
     driver.save_screenshot(f"{screenshot_dir}/login_failed.png")
     return False
 
+# Check AGREE checkbox (updated function)
+def check_agree_checkbox(driver, screenshot_dir):
+    print("[INFO] Waiting for AGREE modal to fully load")
+    time.sleep(5)  # Initial delay to ensure modal rendering
+
+    try:
+        modal_content = driver.find_element(By.XPATH, "//div[contains(@class, 'MuiDialogContent-root')] | //div[contains(@class, 'MuiDialog-root')]//div[contains(@class, 'MuiBox-root')]")
+        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", modal_content)
+        print("[INFO] Scrolled to bottom of modal content")
+        time.sleep(3)
+    except Exception as e:
+        print(f"[WARN] Could not scroll modal content: {e}")
+
+    max_attempts = 7
+    state_check_attempts = 3
+    methods = [
+        {
+            "locator": (By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')])[1]"),
+            "wait_condition": EC.presence_of_element_located,
+            "action": lambda elem: elem.click(),
+            "description": "Direct click on first input with presence"
+        },
+        {
+            "locator": (By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//div[contains(@class, 'MuiBox-root')]//label//input[@type='checkbox'])[1]"),
+            "wait_condition": EC.visibility_of_element_located,
+            "action": lambda elem: elem.click(),
+            "description": "Click first input with visibility"
+        },
+        {
+            "locator": (By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox'])[1]"),
+            "wait_condition": EC.presence_of_element_located,
+            "action": lambda elem: driver.execute_script("arguments[0].checked = true; arguments[0].dispatchEvent(new Event('change'));", elem),
+            "description": "JavaScript check with change event on first input"
+        },
+        {
+            "locator": (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//label[contains(text(), 'I Agree')]"),
+            "wait_condition": EC.element_to_be_clickable,
+            "action": lambda elem: elem.click(),
+            "description": "Click label with 'I Agree'",
+            "pre_action": lambda: driver.execute_script("arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", driver.find_element(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]"))
+        },
+        {
+            "locator": (By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//span[contains(@class, 'MuiCheckbox-root')])[1]"),
+            "wait_condition": EC.element_to_be_clickable,
+            "action": lambda elem: elem.click(),
+            "description": "Click first span with MuiCheckbox-root",
+            "pre_action": lambda: driver.execute_script("arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", driver.find_element(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]"))
+        },
+        {
+            "locator": (By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//span[contains(@class, 'MuiCheckbox-root')])[1]"),
+            "wait_condition": EC.presence_of_element_located,
+            "action": lambda elem: driver.execute_script("arguments[0].click();", elem),
+            "description": "JavaScript click on first span",
+            "pre_action": lambda: driver.execute_script("arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", driver.find_element(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]"))
+        },
+        {
+            "locator": (By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')])[1]"),
+            "wait_condition": EC.presence_of_element_located,
+            "action": lambda elem: driver.execute_script("arguments[0].checked = true; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change'));", elem),
+            "description": "JavaScript check with input and change events on first input"
+        }
+    ]
+
+    checkboxes = driver.find_elements(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]")
+    print(f"[DEBUG] Found {len(checkboxes)} checkboxes in modal")
+    for i, cb in enumerate(checkboxes, 1):
+        attrs = cb.get_attribute("outerHTML")
+        display_state = driver.execute_script("return arguments[0].style.display;", cb)
+        is_disabled = cb.get_attribute("disabled")
+        is_checked = cb.get_attribute("checked")
+        print(f"[DEBUG] Checkbox {i}: {attrs}, Display: {display_state}, Disabled: {is_disabled}, Checked: {is_checked}")
+
+    agree_checkbox = None
+    for attempt in range(max_attempts):
+        method = methods[attempt]
+        print(f"[INFO] Attempt {attempt + 1}/{max_attempts} using method: {method['description']}")
+        
+        try:
+            if "pre_action" in method:
+                method["pre_action"]()
+                time.sleep(3)
+
+            WebDriverWait(driver, 25).until(method["wait_condition"](method["locator"]))
+            agree_checkbox = driver.find_element(*method["locator"])
+            print(f"[INFO] Found element with {method['description']}: {agree_checkbox.get_attribute('outerHTML')}")
+
+            if "input" in method["locator"][1]:
+                display_state = driver.execute_script("return arguments[0].style.display;", agree_checkbox)
+                is_disabled = agree_checkbox.get_attribute("disabled")
+                is_checked = agree_checkbox.get_attribute("checked")
+                print(f"[DEBUG] Element state - Display: {display_state}, Disabled: {is_disabled}, Checked: {is_checked}")
+            else:
+                try:
+                    span = driver.find_element(By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//span[contains(@class, 'MuiCheckbox-root')])[1]")
+                    is_checked = "Mui-checked" in span.get_attribute("class")
+                    display_state = driver.execute_script("return arguments[0].style.display;", span)
+                    print(f"[DEBUG] Span state - Mui-checked: {is_checked}, Display: {display_state}")
+                except Exception as e:
+                    print(f"[DEBUG] Could not check span state: {e}")
+
+            method["action"](agree_checkbox)
+            print(f"[INFO] Applied action with {method['description']}")
+
+            for check_attempt in range(state_check_attempts):
+                time.sleep(1)
+                try:
+                    checkbox = driver.find_element(By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')])[1]")
+                    is_checked = checkbox.get_attribute("checked")
+                    display_state = driver.execute_script("return arguments[0].style.display;", checkbox)
+                    is_disabled = checkbox.get_attribute("disabled")
+                    span = driver.find_element(By.XPATH, "(//div[contains(@class, 'MuiDialog-root')]//span[contains(@class, 'MuiCheckbox-root')])[1]")
+                    is_span_checked = "Mui-checked" in span.get_attribute("class")
+                    print(f"[DEBUG] State check {check_attempt + 1}/{state_check_attempts} - Input Checked: {is_checked}, Input Display: {display_state}, Input Disabled: {is_disabled}, Span Mui-checked: {is_span_checked}")
+                    if is_checked or is_span_checked:
+                        print("[INFO] AGREE checkbox is confirmed checked")
+                        driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
+                        return True
+                except Exception as e:
+                    print(f"[WARN] State check {check_attempt + 1}/{state_check_attempts} failed: {e}")
+                    continue
+
+            print(f"[WARN] Checkbox not checked after {method['description']}, trying next method")
+
+        except TimeoutException:
+            print(f"[WARN] {method['description']} failed due to timeout")
+            continue
+        except Exception as e:
+            print(f"[WARN] {method['description']} failed with error: {e}")
+            continue
+
+    print("[ERROR] All attempts to check AGREE checkbox failed")
+    try:
+        modal = driver.find_element(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]")
+        with open(f"{screenshot_dir}/modal_html.txt", "w") as f:
+            f.write(modal.get_attribute("outerHTML"))
+        driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
+        checkboxes = driver.find_elements(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']")
+        print(f"[DEBUG] Found {len(checkboxes)} checkboxes in modal:")
+        for i, cb in enumerate(checkboxes, 1):
+            attrs = cb.get_attribute("outerHTML")
+            display_state = driver.execute_script("return arguments[0].style.display;", cb)
+            is_disabled = cb.get_attribute("disabled")
+            is_checked = cb.get_attribute("checked")
+            print(f"[DEBUG] Checkbox {i}: {attrs}, Display: {display_state}, Disabled: {is_disabled}, Checked: {is_checked}")
+        element_state = driver.execute_script("return arguments[0].style.display;", agree_checkbox) if agree_checkbox else "N/A"
+        print(f"[DEBUG] Last element display state: {element_state}")
+    except Exception as e:
+        print(f"[ERROR] Failed to capture modal HTML or screenshot: {e}")
+    print("[ERROR] Please ensure the checkbox is visible and tickable, then restart the script or adjust the methods list.")
+    return False
+
 # Book parking for the next available Sunday
 def book_parking(driver):
     try:
-        # Wait for dashboard to be fully interactive
-        WebDriverWait(driver, 25).until(  # Increased to 25s for modal rendering
+        WebDriverWait(driver, 25).until(
             EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'app-body') and not(contains(@class, 'loading'))]"))
         )
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -153,10 +303,9 @@ def book_parking(driver):
         print("[INFO] Dashboard loaded")
         driver.save_screenshot(f"{screenshot_dir}/dashboard.png")
 
-        # Calculate target Sundays for 2-week lookahead
         today = datetime.now()
-        target_dates = [today + timedelta(days=i * 7) for i in range(3)]  # Today + 2 more Sundays (2 weeks)
-        target_dates = [d for d in target_dates if d >= today]  # Ensure no past dates
+        target_dates = [today + timedelta(days=i * 7) for i in range(3)]
+        target_dates = [d for d in target_dates if d >= today]
 
         sunday_elements = driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday') and contains(@style, 'font-size: 24px')]")
         if not sunday_elements:
@@ -167,16 +316,17 @@ def book_parking(driver):
         print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
         target_sunday = None
         for target_date in target_dates:
-            target_date_str = target_date.strftime("%Y-%m-%d")  # e.g., 2025-07-27
-            alt_date_str = target_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
-            alt_date_str2 = target_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
-            alt_date_str3 = target_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
+            target_date_str = target_date.strftime("%Y-%m-%d")
+            alt_date_str = target_date.strftime("%B %d, %Y")
+            alt_date_str2 = target_date.strftime("%d/%m/%Y")
+            alt_date_str3 = target_date.strftime("%d %b %Y")
 
             for sunday in sunday_elements:
                 try:
                     date_element = sunday.find_element(By.XPATH, "./preceding-sibling::* | ./parent::*//span | ./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]//span[contains(@class, 'pull-left')]")
                     date_text = date_element.text.strip()
-                    print(f"[INFO] Checking Sunday date: {date_text} against {target_date_str}")
+                    date_element_html = date_element.get_attribute("outerHTML")
+                    print(f"[DEBUG] Sunday date element: {date_element_html}, Text: {date_text}, Target: {target_date_str}")
                     if any(fmt in date_text for fmt in [target_date_str, alt_date_str, alt_date_str2, alt_date_str3]):
                         target_sunday = sunday
                         print(f"[INFO] Selected Sunday: {date_text} for {target_date_str}")
@@ -196,7 +346,6 @@ def book_parking(driver):
                 driver.save_screenshot(f"{screenshot_dir}/sunday_not_found.png")
                 return False
 
-        # Step 1: Click first Reserve button
         reserve_button_locators = [
             (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
             (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
@@ -224,7 +373,6 @@ def book_parking(driver):
             driver.save_screenshot(f"{screenshot_dir}/reserve_not_found.png")
             return False
 
-        # Check for no spaces available before clicking
         if driver.find_elements(By.XPATH, "//*[contains(text(), 'No spaces available') or contains(text(), 'Fully booked')]"):
             print("[ERROR] No parking spaces available for this Sunday")
             driver.save_screenshot(f"{screenshot_dir}/no_spaces_available.png")
@@ -234,18 +382,16 @@ def book_parking(driver):
         print("[INFO] Clicked first reserve button")
         driver.save_screenshot(f"{screenshot_dir}/first_reserve_clicked.png")
 
-        # Wait for second reserve option to appear
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//*[@id='animate']/div/div/div[3]/button[2]"))
         )
         print("[INFO] Second reserve option detected")
 
-        # Step 2: Click second Reserve button
         second_reserve_button_locators = [
-            (By.XPATH, "//*[@id='animate']/div/div/div[3]/button[2]"),  # Specific XPath from structure
-            (By.XPATH, "/html/body/div[2]/div[1]/div[1]/div/div/div/div/div[3]/button[2]"),  # Absolute XPath
-            (By.CSS_SELECTOR, "#animate > div > div > div.modal-footer > button.md-btn.success.p-x-md:nth-child(2)"),  # CSS Selector
-            (By.XPATH, "//div[contains(@class, 'modal-footer')]//button[contains(@class, 'md-btn success p-x-md') and contains(text(), 'Reserve')]"),  # Generic modal footer
+            (By.XPATH, "//*[@id='animate']/div/div/div[3]/button[2]"),
+            (By.XPATH, "/html/body/div[2]/div[1]/div[1]/div/div/div/div/div[3]/button[2]"),
+            (By.CSS_SELECTOR, "#animate > div > div > div.modal-footer > button.md-btn.success.p-x-md:nth-child(2)"),
+            (By.XPATH, "//div[contains(@class, 'modal-footer')]//button[contains(@class, 'md-btn success p-x-md') and contains(text(), 'Reserve')]"),
         ]
 
         second_reserve_button = None
@@ -266,11 +412,9 @@ def book_parking(driver):
             driver.save_screenshot(f"{screenshot_dir}/second_reserve_not_found.png")
             return False
 
-        # Ensure the button is visible and scroll into view
         driver.execute_script("arguments[0].scrollIntoView(true);", second_reserve_button)
-        time.sleep(1)  # Brief wait for scroll to complete
+        time.sleep(1)
 
-        # Attempt to click the button, fallback to JavaScript if intercepted
         try:
             WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//*[@id='animate']/div/div/div[3]/button[2]")))
             second_reserve_button.click()
@@ -282,17 +426,14 @@ def book_parking(driver):
 
         driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked.png")
 
-        # Wait for AGREE modal to appear (increased timeout)
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']"))
         )
         print("[INFO] AGREE modal detected")
 
-        # Step 3: Check AGREE checkbox
         if not check_agree_checkbox(driver, screenshot_dir):
             return False
 
-        # Step 4: Click Confirm button with retry
         max_attempts = 3
         for attempt in range(max_attempts):
             confirm_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//button[contains(text(), 'Confirm') and not(@disabled)]", 10, "Confirm button")
@@ -305,13 +446,12 @@ def book_parking(driver):
                 print(f"[WARN] Confirm button not clickable or not found on attempt {attempt + 1}, waiting for enable...")
                 driver.save_screenshot(f"{screenshot_dir}/confirm_not_clickable_{attempt + 1}.png")
                 if attempt < max_attempts - 1:
-                    time.sleep(2)  # Wait for the button to become enabled
+                    time.sleep(2)
         else:
             print("[ERROR] Failed to find or enable Confirm button after all attempts")
             driver.save_screenshot(f"{screenshot_dir}/confirm_not_found.png")
             return False
 
-        # Wait for booking confirmation
         try:
             WebDriverWait(driver, 20).until(
                 EC.any_of(
