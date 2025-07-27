@@ -236,16 +236,16 @@ def book_parking(driver):
 
         # Wait for second reserve option to appear
         WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
+            EC.presence_of_element_located((By.XPATH, "//*[@id='animate']/div/div/div[3]/button[2]"))
         )
         print("[INFO] Second reserve option detected")
 
         # Step 2: Click second Reserve button
         second_reserve_button_locators = [
-            (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
-            (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
-            (By.CSS_SELECTOR, "div.modal button, div.dialog button"),
-            (By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button[contains(text(), 'reserve')]"),
+            (By.XPATH, "//*[@id='animate']/div/div/div[3]/button[2]"),  # Specific XPath from structure
+            (By.XPATH, "/html/body/div[2]/div[1]/div[1]/div/div/div/div/div[3]/button[2]"),  # Absolute XPath
+            (By.CSS_SELECTOR, "#animate > div > div > div.modal-footer > button.md-btn.success.p-x-md:nth-child(2)"),  # CSS Selector
+            (By.XPATH, "//div[contains(@class, 'modal-footer')]//button[contains(@class, 'md-btn success p-x-md') and contains(text(), 'Reserve')]"),  # Generic modal footer
         ]
 
         second_reserve_button = None
@@ -266,8 +266,20 @@ def book_parking(driver):
             driver.save_screenshot(f"{screenshot_dir}/second_reserve_not_found.png")
             return False
 
-        second_reserve_button.click()
-        print("[INFO] Clicked second reserve button")
+        # Ensure the button is visible and scroll into view
+        driver.execute_script("arguments[0].scrollIntoView(true);", second_reserve_button)
+        time.sleep(1)  # Brief wait for scroll to complete
+
+        # Attempt to click the button, fallback to JavaScript if intercepted
+        try:
+            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//*[@id='animate']/div/div/div[3]/button[2]")))
+            second_reserve_button.click()
+            print("[INFO] Clicked second reserve button")
+        except Exception as e:
+            print(f"[ERROR] Click intercepted or failed: {e}, using JavaScript")
+            driver.execute_script("arguments[0].click();", second_reserve_button)
+            print("[INFO] Clicked second reserve button with JavaScript")
+
         driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked.png")
 
         # Wait for AGREE modal to appear
