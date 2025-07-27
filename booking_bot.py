@@ -13,7 +13,6 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException,
 
 # Load environment variables
 def load_environment():
-    # Try loading from .env file
     if os.path.exists(".env"):
         load_dotenv()
         print("[INFO] Loaded .env file")
@@ -70,7 +69,7 @@ def try_login(driver, email, password, max_attempts=2):
         (By.NAME, "email"),
         (By.XPATH, "//input[@type='email']"),
         (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
-        (By.CLASS_NAME, "form-control-sm md-input"),
+        (By.CLASS_NAME, "form-control-sm.md-input"),
         (By.XPATH, "//input[contains(@class, 'md-input') and @type='email']"),
         (By.XPATH, "//input[@name='email' or @id='email']"),
     ]
@@ -79,7 +78,7 @@ def try_login(driver, email, password, max_attempts=2):
         (By.NAME, "password"),
         (By.XPATH, "//input[@type='password']"),
         (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
-        (By.CLASS_NAME, "form-control-sm md-input"),
+        (By.CLASS_NAME, "form-control-sm.md-input"),
         (By.XPATH, "//input[contains(@class, 'md-input') and @type='password']"),
         (By.XPATH, "//input[@name='password' or @id='password']"),
     ]
@@ -88,7 +87,7 @@ def try_login(driver, email, password, max_attempts=2):
         (By.XPATH, "//button[@type='submit']"),
         (By.XPATH, "//button[contains(text(), 'Log In')]"),
         (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
-        (By.CLASS_NAME, "btn btn-block md-raised primary"),
+        (By.CLASS_NAME, "btn.btn-block.md-raised.primary"),
         (By.XPATH, "//button[@type='button']"),
         (By.XPATH, "//button[contains(@class, 'md-btn') and contains(text(), 'LOG IN')]"),
         (By.XPATH, "//button[@type='submit' or contains(@class, 'login')]"),
@@ -158,10 +157,12 @@ def book_parking(driver):
         today = datetime.now()
         days_to_sunday = (6 - today.weekday()) % 7
         target_sunday_date = today if days_to_sunday == 0 else today + timedelta(days=days_to_sunday)
-        target_date_str = target_sunday_date.strftime("%Y-%m-%d")  # Primary format
-        alt_date_str = target_sunday_date.strftime("%B %d, %Y")  # Alternative format
+        target_date_str = target_sunday_date.strftime("%Y-%m-%d")  # e.g., 2025-07-27
+        alt_date_str = target_sunday_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
+        alt_date_str2 = target_sunday_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
+        alt_date_str3 = target_sunday_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
 
-        sunday_elements = driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday')]")
+        sunday_elements = driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday') and contains(@style, 'font-size: 24px')]")
         if not sunday_elements:
             print("[ERROR] No Sunday elements found")
             driver.save_screenshot(f"{screenshot_dir}/sundays_not_found.png")
@@ -169,50 +170,51 @@ def book_parking(driver):
 
         print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
         target_sunday = None
-        for sunday in sunday_elements:
-            try:
-                date_element = sunday.find_element(By.XPATH, "./preceding-sibling::*[contains(@class, 'date')] | ./parent::*/span[contains(@class, 'date')]")
-                date_text = date_element.text.strip()
-                print(f"[INFO] Sunday date: {date_text}")
-                if target_date_str in date_text or alt_date_str in date_text:
-                    target_sunday = sunday
-                    break
-            except NoSuchElementException:
-                print("[INFO] No date found for Sunday element")
+        for attempt in range(2):  # Try today, then next Sunday
+            current_target_date = target_sunday_date if attempt == 0 else target_sunday_date + timedelta(days=7)
+            target_date_str = current_target_date.strftime("%Y-%m-%d")
+            alt_date_str = current_target_date.strftime("%B %d, %Y")
+            alt_date_str2 = current_target_date.strftime("%d/%m/%Y")
+            alt_date_str3 = current_target_date.strftime("%d %b %Y")
 
-        if not target_sunday:
-            print(f"[ERROR] No matching Sunday element found for date: {target_date_str} or {alt_date_str}")
-            # Fallback: Try next Sunday
-            next_sunday_date = target_sunday_date + timedelta(days=7)
-            target_date_str = next_sunday_date.strftime("%Y-%m-%d")
-            alt_date_str = next_sunday_date.strftime("%B %d, %Y")
             for sunday in sunday_elements:
                 try:
-                    date_element = sunday.find_element(By.XPATH, "./preceding-sibling::*[contains(@class, 'date')] | ./parent::*/span[contains(@class, 'date')]")
+                    # Broader date locator
+                    date_element = sunday.find_element(By.XPATH, "./preceding-sibling::* | ./parent::*//span | ./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]//span[contains(@class, 'pull-left')]")
                     date_text = date_element.text.strip()
-                    if target_date_str in date_text or alt_date_str in date_text:
+                    print(f"[INFO] Sunday date: {date_text}")
+                    if any(fmt in date_text for fmt in [target_date_str, alt_date_str, alt_date_str2, alt_date_str3]):
                         target_sunday = sunday
-                        print(f"[INFO] Fallback to next Sunday: {date_text}")
+                        print(f"[INFO] Selected Sunday: {date_text}")
                         break
                 except NoSuchElementException:
-                    continue
+                    print("[INFO] No date found for Sunday element")
+
+            if target_sunday:
+                break
 
         if not target_sunday:
-            print(f"[ERROR] No matching Sunday element found for fallback date: {target_date_str}")
-            driver.save_screenshot(f"{screenshot_dir}/sunday_not_found.png")
-            return False
+            print(f"[ERROR] No matching Sunday element found for dates: {target_date_str}, {alt_date_str}, {alt_date_str2}, {alt_date_str3}")
+            print("[INFO] Falling back to first Sunday element")
+            target_sunday = sunday_elements[0] if sunday_elements else None
+            if not target_sunday:
+                driver.save_screenshot(f"{screenshot_dir}/sunday_not_found.png")
+                return False
 
         reserve_button_locators = [
-            (By.XPATH, "//button[contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"),
-            (By.CLASS_NAME, "md-btn.md-flat.m-r"),
-            (By.XPATH, ".//ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"),
-            (By.XPATH, ".//ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::div[contains(@class, 'pull-right')]/button[contains(@class, 'md-btn md-flat m-r') and contains(translate(text(), 'RESERVE', 'reserve'), 'reserve')]"),
+            (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
+            (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
+            (By.CSS_SELECTOR, "div.pull-right.p-a-sm button:nth-child(3)"),
+            (By.XPATH, ".//ancestor::div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(text(), 'reserve')]"),
+            (By.XPATH, ".//ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::div[contains(@class, 'pull-right')]/button[contains(@class, 'md-btn md-flat m-r') and contains(text(), 'reserve')]"),
         ]
 
         reserve_button = None
         for by, value in reserve_button_locators:
             try:
-                reserve_button = target_sunday.find_element(by, value)
+                # Use parent container to ensure context
+                parent = target_sunday.find_element(By.XPATH, "./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]")
+                reserve_button = parent.find_element(by, value)
                 if reserve_button:
                     if reserve_button.get_attribute("disabled") or "disabled" in reserve_button.get_attribute("class").lower():
                         print("[INFO] Reserve button is disabled for this Sunday")
@@ -227,6 +229,12 @@ def book_parking(driver):
             driver.save_screenshot(f"{screenshot_dir}/reserve_not_found.png")
             return False
 
+        # Check for no spaces available
+        if driver.find_elements(By.XPATH, "//*[contains(text(), 'No spaces available') or contains(text(), 'Fully booked')]"):
+            print("[ERROR] No parking spaces available for this Sunday")
+            driver.save_screenshot(f"{screenshot_dir}/no_spaces_available.png")
+            return False
+
         reserve_button.click()
         print("[INFO] Clicked reserve button")
         driver.save_screenshot(f"{screenshot_dir}/reserve_clicked.png")
@@ -235,4 +243,68 @@ def book_parking(driver):
             confirm_button = safe_find(
                 driver,
                 By.XPATH,
-                "//button[contains(translate(text(), 'CONFIRMOKSUBMIT',
+                "//button[contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'confirm') or contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'ok') or contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'submit')]",
+                timeout=10,
+                description="confirm button"
+            )
+            if confirm_button:
+                confirm_button.click()
+                print("[INFO] Clicked confirmation button")
+                driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
+        except TimeoutException:
+            print("[INFO] No confirmation button found")
+
+        try:
+            WebDriverWait(driver, 20).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]")),
+                    EC.url_contains("confirmation")
+                )
+            )
+            print("[SUCCESS] Booking confirmed")
+            driver.save_screenshot(f"{screenshot_dir}/booking_confirmed.png")
+            return True
+        except TimeoutException:
+            try:
+                alert = driver.switch_to.alert
+                alert.accept()
+                print("[INFO] Handled alert for booking confirmation")
+                driver.save_screenshot(f"{screenshot_dir}/booking_alert_handled.png")
+                return True
+            except NoSuchElementException:
+                print("[ERROR] No confirmation or alert found")
+                driver.save_screenshot(f"{screenshot_dir}/booking_failed.png")
+                return False
+
+    except Exception as e:
+        print(f"[ERROR] Booking failed: {e}\n{traceback.format_exc()}")
+        driver.save_screenshot(f"{screenshot_dir}/booking_error.png")
+        return False
+
+# Main execution
+def main():
+    global screenshot_dir
+    screenshot_dir = f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    os.makedirs(screenshot_dir, exist_ok=True)
+    driver = None
+    try:
+        email, password = load_environment()
+        driver = init_driver()
+        if try_login(driver, email, password):
+            if book_parking(driver):
+                print("[SUCCESS] Parking booked successfully")
+            else:
+                print("[ERROR] Failed to book parking")
+        else:
+            print("[ERROR] Login failed")
+    except Exception as e:
+        print(f"[ERROR] Unexpected error: {e}\n{traceback.format_exc()}")
+        if driver:
+            driver.save_screenshot(f"{screenshot_dir}/main_error.png")
+    finally:
+        if driver:
+            driver.quit()
+            print("[INFO] ChromeDriver closed")
+
+if __name__ == "__main__":
+    main()
