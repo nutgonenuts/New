@@ -196,6 +196,7 @@ def book_parking(driver):
                 driver.save_screenshot(f"{screenshot_dir}/sunday_not_found.png")
                 return False
 
+        # Step 1: Click first Reserve button
         reserve_button_locators = [
             (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
             (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
@@ -213,45 +214,63 @@ def book_parking(driver):
                     if reserve_button.get_attribute("disabled") or "disabled" in reserve_button.get_attribute("class").lower():
                         print("[INFO] Reserve button is disabled for this Sunday")
                         continue
-                    print(f"[INFO] Found reserve button: {value}, enabled: {not reserve_button.get_attribute('disabled')}")
+                    print(f"[INFO] Found first reserve button: {value}, enabled: {not reserve_button.get_attribute('disabled')}")
                     break
             except NoSuchElementException:
-                print(f"[INFO] Reserve button not found with locator: {value}")
+                print(f"[INFO] First reserve button not found with locator: {value}")
 
         if not reserve_button:
-            print("[ERROR] Reserve button not found or all buttons disabled")
+            print("[ERROR] First reserve button not found or all buttons disabled")
             driver.save_screenshot(f"{screenshot_dir}/reserve_not_found.png")
             return False
 
-        # Check for no spaces available
+        # Check for no spaces available before clicking
         if driver.find_elements(By.XPATH, "//*[contains(text(), 'No spaces available') or contains(text(), 'Fully booked')]"):
             print("[ERROR] No parking spaces available for this Sunday")
             driver.save_screenshot(f"{screenshot_dir}/no_spaces_available.png")
             return False
 
         reserve_button.click()
-        print("[INFO] Clicked reserve button")
+        print("[INFO] Clicked first reserve button")
         driver.save_screenshot(f"{screenshot_dir}/reserve_clicked.png")
 
-        try:
-            # Broaden confirmation check
-            WebDriverWait(driver, 20).until(
-                EC.any_of(
-                    EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'confirm') or contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'ok') or contains(translate(text(), 'CONFIRMOKSUBMIT', 'confirmoksubmit'), 'submit')]")),
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button")),
-                    EC.presence_of_element_located((By.XPATH, "//form//button[@type='submit']")),
-                    EC.url_contains("confirmation")
-                )
-            )
-            # Try to find and click the first available button in modal/form
-            confirm_button = driver.find_elements(By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button | //form//button[@type='submit']")
-            if confirm_button:
-                confirm_button[0].click()
-                print("[INFO] Clicked confirmation button in modal/form")
-                driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
-        except TimeoutException:
-            print("[INFO] No confirmation button, modal, form, or URL change found")
+        # Wait for option to appear (e.g., modal or updated DOM)
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')] | //button[@type='button' and contains(text(), 'reserve')]"))
+        )
+        print("[INFO] Reservation option detected")
 
+        # Step 2: Click second Reserve button
+        second_reserve_button_locators = [
+            (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
+            (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
+            (By.CSS_SELECTOR, "div.modal button:nth-child(3), div.dialog button:nth-child(3)"),
+            (By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button[contains(text(), 'reserve')]"),
+        ]
+
+        second_reserve_button = None
+        for by, value in second_reserve_button_locators:
+            try:
+                second_reserve_button = driver.find_element(by, value)
+                if second_reserve_button:
+                    if second_reserve_button.get_attribute("disabled") or "disabled" in second_reserve_button.get_attribute("class").lower():
+                        print("[INFO] Second reserve button is disabled")
+                        continue
+                    print(f"[INFO] Found second reserve button: {value}, enabled: {not second_reserve_button.get_attribute('disabled')}")
+                    break
+            except NoSuchElementException:
+                print(f"[INFO] Second reserve button not found with locator: {value}")
+
+        if not second_reserve_button:
+            print("[ERROR] Second reserve button not found or disabled")
+            driver.save_screenshot(f"{screenshot_dir}/second_reserve_not_found.png")
+            return False
+
+        second_reserve_button.click()
+        print("[INFO] Clicked second reserve button")
+        driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked.png")
+
+        # Wait for booking confirmation
         try:
             WebDriverWait(driver, 20).until(
                 EC.any_of(
@@ -270,7 +289,7 @@ def book_parking(driver):
                 driver.save_screenshot(f"{screenshot_dir}/booking_alert_handled.png")
                 return True
             except NoAlertPresentException:
-                print("[ERROR] No confirmation, modal, form, or alert found")
+                print("[ERROR] No confirmation or alert found after second click")
                 driver.save_screenshot(f"{screenshot_dir}/booking_failed.png")
                 return False
 
@@ -282,7 +301,7 @@ def book_parking(driver):
 # Main execution
 def main():
     global screenshot_dir
-    screenshot_dir = f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    screenshot_dir = f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%SS')}"
     os.makedirs(screenshot_dir, exist_ok=True)
     driver = None
     try:
