@@ -240,16 +240,24 @@ def book_parking(driver):
         print("[INFO] Scrolled to end of modal content")
         time.sleep(1)  # Allow UI to update
 
-        # Check "I Agree" checkbox
-        agree_checkbox = safe_find(driver, By.XPATH, "//input[@type='checkbox']", timeout=10, description="I Agree checkbox")
-        if agree_checkbox:
-            if not agree_checkbox.is_selected():
-                agree_checkbox.click()
-            print("[INFO] Checked I Agree checkbox")
-            driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
-            time.sleep(1)
+        # Check "I Agree" checkbox with retry
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            agree_checkbox = safe_find(driver, By.XPATH, "//input[@type='checkbox']", timeout=20, description="I Agree checkbox")
+            if agree_checkbox and agree_checkbox.is_enabled():
+                if not agree_checkbox.is_selected():
+                    agree_checkbox.click()
+                print(f"[INFO] Checked I Agree checkbox on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/agree_checked_{attempt + 1}.png")
+                break
+            else:
+                print(f"[ERROR] I Agree checkbox not found or not enabled on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/agree_not_found_{attempt + 1}.png")
+                if attempt < max_attempts - 1:
+                    time.sleep(2)  # Wait before retry
+                    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", modal_content)  # Scroll again
         else:
-            print("[ERROR] I Agree checkbox not found")
+            print("[ERROR] Failed to find or enable I Agree checkbox after all attempts")
             driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
             return False
 
