@@ -56,7 +56,7 @@ def safe_find(driver, by, value, timeout=20, description="element"):
         print(f"[INFO] Found {description}: {value}")
         return element
     except TimeoutException:
-        print(f"[ERROR] Timeout waiting for {description}: {value}")
+        print(f"[ERROR] Timeout waiting for {description]: {value}")
         return None
 
 # Login to Parkalot
@@ -232,19 +232,19 @@ def book_parking(driver):
 
         reserve_button.click()
         print("[INFO] Clicked first reserve button")
-        driver.save_screenshot(f"{screenshot_dir}/reserve_clicked.png")
+        driver.save_screenshot(f"{screenshot_dir}/first_reserve_clicked.png")
 
-        # Wait for option to appear (e.g., modal or updated DOM)
+        # Wait for second reserve option to appear
         WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')] | //button[@type='button' and contains(text(), 'reserve')]"))
+            EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
         )
-        print("[INFO] Reservation option detected")
+        print("[INFO] Second reserve option detected")
 
         # Step 2: Click second Reserve button
         second_reserve_button_locators = [
             (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
             (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
-            (By.CSS_SELECTOR, "div.modal button:nth-child(3), div.dialog button:nth-child(3)"),
+            (By.CSS_SELECTOR, "div.modal button, div.dialog button"),
             (By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button[contains(text(), 'reserve')]"),
         ]
 
@@ -270,6 +270,34 @@ def book_parking(driver):
         print("[INFO] Clicked second reserve button")
         driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked.png")
 
+        # Wait for AGREE modal to appear
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']"))
+        )
+        print("[INFO] AGREE modal detected")
+
+        # Step 3: Check AGREE checkbox
+        agree_checkbox = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]", 10, "AGREE checkbox")
+        if agree_checkbox:
+            driver.execute_script("arguments[0].click();", agree_checkbox)  # Use JS to click checkbox
+            print("[INFO] Checked AGREE checkbox")
+            driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
+        else:
+            print("[ERROR] AGREE checkbox not found")
+            driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
+            return False
+
+        # Step 4: Click Confirm button
+        confirm_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//button[contains(translate(text(), 'CONFIRM', 'confirm'), 'confirm')]", 10, "Confirm button")
+        if confirm_button:
+            confirm_button.click()
+            print("[INFO] Clicked Confirm button")
+            driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
+        else:
+            print("[ERROR] Confirm button not found")
+            driver.save_screenshot(f"{screenshot_dir}/confirm_not_found.png")
+            return False
+
         # Wait for booking confirmation
         try:
             WebDriverWait(driver, 20).until(
@@ -289,7 +317,7 @@ def book_parking(driver):
                 driver.save_screenshot(f"{screenshot_dir}/booking_alert_handled.png")
                 return True
             except NoAlertPresentException:
-                print("[ERROR] No confirmation or alert found after second click")
+                print("[ERROR] No confirmation or alert found after Confirm click")
                 driver.save_screenshot(f"{screenshot_dir}/booking_failed.png")
                 return False
 
