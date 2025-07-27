@@ -2,7 +2,7 @@ name: Run Booking Bot
 on:
   workflow_dispatch:  # Allow manual triggers
   schedule:
-    - cron: "10 20 * * 0"  # Run at 20:10 UTC = 21:10 BST every Sunday
+    - cron: "45 20 * * 0"  # Run at 20:45 UTC = 21:45 BST every Sunday
 jobs:
   booking:
     runs-on: ubuntu-latest
