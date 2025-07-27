@@ -1,10 +1,12 @@
-name: Test Parking Booking
+name: Parking Booking at 20:00 BST
 on:
-  push:
   schedule:
-    - cron: "0 0 * * *"  # Run daily
+    - cron: "0 19 * * *"  # 19:00 UTC = 20:00 BST
+  push:  # Optional: Run on push for testing
+    branches:
+      - main
 jobs:
-  test-booking:
+  book-parking:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,12 +23,14 @@ jobs:
           EMAIL: ${{ secrets.EMAIL }}
           PASSWORD: ${{ secrets.PASSWORD }}
         run: python booking_script.py
-      - name: Upload artifacts
+      - name: Upload screenshots
+        if: always()  # Upload even on failure
         uses: actions/upload-artifact@v4
         with:
           name: booking-screenshots
           path: screenshots/
       - name: Upload logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: booking-bot-log
