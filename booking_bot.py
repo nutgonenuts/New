@@ -11,288 +11,376 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException, NoAlertPresentException
 
+# Load environment variables
+def load_environment():
+    if os.path.exists(".env"):
+        load_dotenv()
+        print("[INFO] Loaded .env file")
+    else:
+        print("[INFO] No .env file found, checking direct environment variables")
+    
+    email = os.getenv("EMAIL")
+    password = os.getenv("PASSWORD")
+    
+    if not email or not password:
+        raise ValueError("EMAIL or PASSWORD not set in .env file or environment variables")
+    
+    print("[INFO] EMAIL and PASSWORD retrieved successfully")
+    return email, password
 
-class ParkalotBot:
-    TIMEOUT_LONG = 20
-    TIMEOUT_SHORT = 10
+# Initialize ChromeDriver
+def init_driver():
+    chromedriver_autoinstaller.install()
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--enable-javascript")
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
+        print("[INFO] ChromeDriver initialized")
+        return driver
+    except WebDriverException as e:
+        print(f"[ERROR] Failed to initialize ChromeDriver: {e}\n{traceback.format_exc()}")
+        raise
 
-    LOGIN_URL = "https://app.parkalot.io/login"
+# Safe element finder with logging
+def safe_find(driver, by, value, timeout=20, description="element"):
+    try:
+        element = WebDriverWait(driver, timeout).until(
+            EC.element_to_be_clickable((by, value))
+        )
+        print(f"[INFO] Found {description}: {value}")
+        return element
+    except TimeoutException:
+        print(f"[ERROR] Timeout waiting for {description}: {value}")
+        return None
 
-    EMAIL_LOCATORS = [
-        (By.ID, "email"), (By.NAME, "email"), (By.XPATH, "//input[@type='email']"),
-        (By.XPATH, "//input[contains(@class, 'md-input') and @type='email']")
+# Login to Parkalot
+def try_login(driver, email, password, max_attempts=2):
+    driver.get("https://app.parkalot.io/login")
+    print("[INFO] Navigated to login page")
+
+    email_locators = [
+        (By.ID, "email"),
+        (By.NAME, "email"),
+        (By.XPATH, "//input[@type='email']"),
+        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='email']"),
+        (By.CLASS_NAME, "form-control-sm.md-input"),
+        (By.XPATH, "//input[contains(@class, 'md-input') and @type='email']"),
+        (By.XPATH, "//input[@name='email' or @id='email']"),
     ]
-    PASSWORD_LOCATORS = [
-        (By.ID, "password"), (By.NAME, "password"), (By.XPATH, "//input[@type='password']"),
-        (By.XPATH, "//input[contains(@class, 'md-input') and @type='password']")
+    pass_locators = [
+        (By.ID, "password"),
+        (By.NAME, "password"),
+        (By.XPATH, "//input[@type='password']"),
+        (By.XPATH, "//div[@class='md-form-group float-label']/input[@type='password']"),
+        (By.CLASS_NAME, "form-control-sm.md-input"),
+        (By.XPATH, "//input[contains(@class, 'md-input') and @type='password']"),
+        (By.XPATH, "//input[@name='password' or @id='password']"),
     ]
-    LOGIN_BUTTON_LOCATORS = [
+    login_button_locators = [
+        (By.ID, "login"),
         (By.XPATH, "//button[@type='submit']"),
-        (By.XPATH, "//button[contains(translate(text(),'LOGIN','login'), 'login')]")
+        (By.XPATH, "//button[contains(text(), 'Log In')]"),
+        (By.XPATH, "//button[contains(text(), 'LOG IN')]"),
+        (By.CLASS_NAME, "btn.btn-block.md-raised.primary"),
+        (By.XPATH, "//button[@type='button']"),
+        (By.XPATH, "//button[contains(@class, 'md-btn') and contains(text(), 'LOG IN')]"),
+        (By.XPATH, "//button[@type='submit' or contains(@class, 'login')]"),
     ]
 
-    def __init__(self, headless=True, max_booking_attempts=3, retry_delay=30):
-        self.driver = None
-        self.screenshot_dir = f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        os.makedirs(self.screenshot_dir, exist_ok=True)
-        self.log_file = os.path.join(self.screenshot_dir, "run.log")
-        self.email, self.password = self.load_environment()
-        self.headless = headless
-        self.max_booking_attempts = max_booking_attempts
-        self.retry_delay = retry_delay
+    for attempt in range(max_attempts):
+        print(f"[INFO] Login attempt {attempt + 1}/{max_attempts}")
+        email_field = pass_field = login_button = None
 
-    def log(self, message, level="INFO"):
-        """Log to console and file."""
-        log_msg = f"[{level}] {message}"
-        print(log_msg)
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now().isoformat()} {log_msg}\n")
+        for by, value in email_locators:
+            email_field = safe_find(driver, by, value, description="email field")
+            if email_field:
+                break
+        for by, value in pass_locators:
+            pass_field = safe_find(driver, by, value, description="password field")
+            if pass_field:
+                break
+        for by, value in login_button_locators:
+            login_button = safe_find(driver, by, value, description="login button")
+            if login_button:
+                break
 
-    def load_environment(self):
-        if os.path.exists(".env"):
-            load_dotenv()
-            self.log("Loaded .env file")
-        email = os.getenv("EMAIL")
-        password = os.getenv("PASSWORD")
-        if not email or not password:
-            raise ValueError("EMAIL or PASSWORD not set")
-        return email, password
+        if not all([email_field, pass_field, login_button]):
+            print(f"[ERROR] Missing login elements in attempt {attempt + 1}")
+            driver.save_screenshot(f"{screenshot_dir}/login_attempt_{attempt + 1}_failed.png")
+            continue
 
-    def init_driver(self):
-        chromedriver_autoinstaller.install()
-        options = Options()
-        if self.headless:
-            options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1920,1080")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--start-maximized")
         try:
-            self.driver = webdriver.Chrome(options=options)
-            self.log("ChromeDriver initialized")
-        except WebDriverException as e:
-            self.log_exception(e, "ChromeDriver initialization failed")
-            raise
+            email_field.clear()
+            email_field.send_keys(email)
+            pass_field.clear()
+            pass_field.send_keys(password)
+            login_button.click()
+            print("[INFO] Submitted login form")
 
-    def safe_find(self, by, value, timeout=TIMEOUT_LONG, description="element"):
-        try:
-            element = WebDriverWait(self.driver, timeout).until(
-                EC.element_to_be_clickable((by, value))
+            WebDriverWait(driver, 20).until(
+                EC.any_of(
+                    EC.url_contains("dashboard"),
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Dashboard') or contains(text(), 'Welcome')]")),
+                    EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Sunday')]"))
+                )
             )
-            self.log(f"Found {description}: {value}")
-            return element
+            print("[INFO] Login successful. URL:", driver.current_url)
+            driver.save_screenshot(f"{screenshot_dir}/login_success.png")
+            return True
         except TimeoutException:
-            self.log(f"Timeout waiting for {description}: {value}", "ERROR")
-            return None
+            print(f"[ERROR] Login failed in attempt {attempt + 1}")
+            driver.save_screenshot(f"{screenshot_dir}/login_attempt_{attempt + 1}_failed.png")
 
-    def try_login(self, max_attempts=2):
-        self.driver.get(self.LOGIN_URL)
-        self.log("Navigated to login page")
+    print("[ERROR] All login attempts failed")
+    driver.save_screenshot(f"{screenshot_dir}/login_failed.png")
+    return False
 
-        for attempt in range(max_attempts):
-            self.log(f"Login attempt {attempt + 1}/{max_attempts}")
-            email_field = self.find_first_valid(self.EMAIL_LOCATORS, "email field")
-            pass_field = self.find_first_valid(self.PASSWORD_LOCATORS, "password field")
-            login_button = self.find_first_valid(self.LOGIN_BUTTON_LOCATORS, "login button")
+# Book parking for the next available Sunday
+def book_parking(driver):
+    try:
+        # Wait for dashboard to be fully interactive
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'app-body') and not(contains(@class, 'loading'))]"))
+        )
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        driver.execute_script("window.scrollTo(0, 0);")
+        print("[INFO] Dashboard loaded")
+        driver.save_screenshot(f"{screenshot_dir}/dashboard.png")
 
-            if not all([email_field, pass_field, login_button]):
-                self.log("Missing login elements", "ERROR")
-                self.take_screenshot(f"login_attempt_{attempt + 1}_failed.png")
-                continue
+        # Calculate target Sundays for 2-week lookahead
+        today = datetime.now()
+        target_dates = [today + timedelta(days=i * 7) for i in range(3)]  # Today + 2 more Sundays (2 weeks)
+        target_dates = [d for d in target_dates if d >= today]  # Ensure no past dates
 
-            try:
-                email_field.clear()
-                email_field.send_keys(self.email)
-                pass_field.clear()
-                pass_field.send_keys(self.password)
-                login_button.click()
-                self.log("Submitted login form")
-
-                WebDriverWait(self.driver, self.TIMEOUT_LONG).until(
-                    EC.any_of(
-                        EC.url_contains("dashboard"),
-                        EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Dashboard') or contains(text(), 'Welcome')]"))
-                    )
-                )
-                self.log("Login successful")
-                self.take_screenshot("login_success.png")
-                return True
-            except TimeoutException:
-                self.log("Login failed", "ERROR")
-                self.take_screenshot(f"login_attempt_{attempt + 1}_failed.png")
-
-        self.log("All login attempts failed", "ERROR")
-        self.take_screenshot("login_failed.png")
-        return False
-
-    def book_parking_with_retry(self):
-        """Attempt to book parking with retries and delays."""
-        for attempt in range(1, self.max_booking_attempts + 1):
-            self.log(f"Booking attempt {attempt}/{self.max_booking_attempts}")
-            if self.book_parking():
-                return True
-            if attempt < self.max_booking_attempts:
-                self.log(f"Retrying in {self.retry_delay} seconds...")
-                time.sleep(self.retry_delay)
-        self.log("All booking attempts failed", "ERROR")
-        return False
-
-    def book_parking(self):
-        try:
-            WebDriverWait(self.driver, self.TIMEOUT_LONG).until(
-                EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'app-body') and not(contains(@class, 'loading'))]"))
-            )
-            self.log("Dashboard loaded")
-            self.take_screenshot("dashboard.png")
-
-            today = datetime.now()
-            target_dates = [today + timedelta(days=i * 7) for i in range(3)]
-
-            sunday_elements = self.driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday') and contains(@style, 'font-size: 24px')]")
-            if not sunday_elements:
-                self.log("No Sunday elements found", "ERROR")
-                self.take_screenshot("sundays_not_found.png")
-                return False
-
-            target_sunday = self.find_target_sunday(sunday_elements, target_dates)
-            if not target_sunday:
-                self.log("No matching Sunday element found", "ERROR")
-                self.take_screenshot("sunday_not_found.png")
-                return False
-
-            if not self.click_reserve_button(target_sunday):
-                return False
-
-            if not self.handle_agree_and_confirm():
-                return False
-
-            try:
-                WebDriverWait(self.driver, self.TIMEOUT_LONG).until(
-                    EC.any_of(
-                        EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]")),
-                        EC.url_contains("confirmation")
-                    )
-                )
-                self.log("Booking confirmed", "SUCCESS")
-                self.take_screenshot("booking_confirmed.png")
-                return True
-            except TimeoutException:
-                try:
-                    alert = self.driver.switch_to.alert
-                    alert.accept()
-                    self.log("Handled alert for booking confirmation")
-                    self.take_screenshot("booking_alert_handled.png")
-                    return True
-                except NoAlertPresentException:
-                    self.log("No confirmation or alert found", "ERROR")
-                    self.take_screenshot("booking_failed.png")
-                    return False
-
-        except Exception as e:
-            self.log_exception(e, "Booking failed")
+        sunday_elements = driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday') and contains(@style, 'font-size: 24px')]")
+        if not sunday_elements:
+            print("[ERROR] No Sunday elements found")
+            driver.save_screenshot(f"{screenshot_dir}/sundays_not_found.png")
             return False
 
-    def find_target_sunday(self, sunday_elements, target_dates):
+        print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
+        target_sunday = None
         for target_date in target_dates:
-            formats = [
-                target_date.strftime("%Y-%m-%d"),
-                target_date.strftime("%B %d, %Y"),
-                target_date.strftime("%d/%m/%Y"),
-                target_date.strftime("%d %b %Y")
-            ]
+            target_date_str = target_date.strftime("%Y-%m-%d")  # e.g., 2025-07-27
+            alt_date_str = target_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
+            alt_date_str2 = target_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
+            alt_date_str3 = target_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
+
             for sunday in sunday_elements:
                 try:
-                    date_element = sunday.find_element(
-                        By.XPATH,
-                        "./preceding-sibling::* | ./parent::*//span | ./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]//span[contains(@class, 'pull-left')]"
-                    )
+                    date_element = sunday.find_element(By.XPATH, "./preceding-sibling::* | ./parent::*//span | ./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]//span[contains(@class, 'pull-left')]")
                     date_text = date_element.text.strip()
-                    if self.match_date_text(date_text, formats):
-                        self.log(f"Selected Sunday: {date_text} for {formats[0]}")
-                        return sunday
+                    print(f"[INFO] Checking Sunday date: {date_text} against {target_date_str}")
+                    if any(fmt in date_text for fmt in [target_date_str, alt_date_str, alt_date_str2, alt_date_str3]):
+                        target_sunday = sunday
+                        print(f"[INFO] Selected Sunday: {date_text} for {target_date_str}")
+                        break
                 except NoSuchElementException:
-                    continue
-        return None
+                    print("[INFO] No date found for Sunday element")
+                if target_sunday:
+                    break
+            if target_sunday:
+                break
 
-    def match_date_text(self, text, formats):
-        return any(fmt in text for fmt in formats)
+        if not target_sunday:
+            print(f"[ERROR] No matching Sunday element found for any date in lookahead")
+            print("[INFO] Falling back to first Sunday element")
+            target_sunday = sunday_elements[0] if sunday_elements else None
+            if not target_sunday:
+                driver.save_screenshot(f"{screenshot_dir}/sunday_not_found.png")
+                return False
 
-    def click_reserve_button(self, target_sunday):
+        # Step 1: Click first Reserve button
+        reserve_button_locators = [
+            (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
+            (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
+            (By.CSS_SELECTOR, "div.pull-right.p-a-sm button:nth-child(3)"),
+            (By.XPATH, ".//ancestor::div[contains(@class, 'pull-right') and contains(@class, 'p-a-sm')]/button[contains(@class, 'md-btn md-flat m-r') and contains(text(), 'reserve')]"),
+            (By.XPATH, ".//ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]/descendant::div[contains(@class, 'pull-right')]/button[contains(@class, 'md-btn md-flat m-r') and contains(text(), 'reserve')]"),
+        ]
+
+        reserve_button = None
+        for by, value in reserve_button_locators:
+            try:
+                parent = target_sunday.find_element(By.XPATH, "./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]")
+                reserve_button = parent.find_element(by, value)
+                if reserve_button:
+                    if reserve_button.get_attribute("disabled") or "disabled" in reserve_button.get_attribute("class").lower():
+                        print("[INFO] Reserve button is disabled for this Sunday")
+                        continue
+                    print(f"[INFO] Found first reserve button: {value}, enabled: {not reserve_button.get_attribute('disabled')}")
+                    break
+            except NoSuchElementException:
+                print(f"[INFO] First reserve button not found with locator: {value}")
+
+        if not reserve_button:
+            print("[ERROR] First reserve button not found or all buttons disabled")
+            driver.save_screenshot(f"{screenshot_dir}/reserve_not_found.png")
+            return False
+
+        # Check for no spaces available before clicking
+        if driver.find_elements(By.XPATH, "//*[contains(text(), 'No spaces available') or contains(text(), 'Fully booked')]"):
+            print("[ERROR] No parking spaces available for this Sunday")
+            driver.save_screenshot(f"{screenshot_dir}/no_spaces_available.png")
+            return False
+
+        reserve_button.click()
+        print("[INFO] Clicked first reserve button")
+        driver.save_screenshot(f"{screenshot_dir}/first_reserve_clicked.png")
+
+        # Wait for second reserve option to appear
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
+        )
+        print("[INFO] Second reserve option detected")
+
+        # Step 2: Click second Reserve button
+        second_reserve_button_locators = [
+            (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
+            (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
+            (By.CSS_SELECTOR, "div.modal button, div.dialog button"),
+            (By.XPATH, "//*[contains(@class, 'modal') or contains(@class, 'dialog')]//button[contains(text(), 'reserve')]"),
+        ]
+
+        second_reserve_button = None
+        for by, value in second_reserve_button_locators:
+            try:
+                second_reserve_button = driver.find_element(by, value)
+                if second_reserve_button:
+                    if second_reserve_button.get_attribute("disabled") or "disabled" in second_reserve_button.get_attribute("class").lower():
+                        print("[INFO] Second reserve button is disabled")
+                        continue
+                    print(f"[INFO] Found second reserve button: {value}, enabled: {not second_reserve_button.get_attribute('disabled')}")
+                    break
+            except NoSuchElementException:
+                print(f"[INFO] Second reserve button not found with locator: {value}")
+
+        if not second_reserve_button:
+            print("[ERROR] Second reserve button not found or disabled")
+            driver.save_screenshot(f"{screenshot_dir}/second_reserve_not_found.png")
+            return False
+
+        second_reserve_button.click()
+        print("[INFO] Clicked second reserve button")
+        driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked.png")
+
+        # Wait for AGREE modal to appear
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']"))
+        )
+        print("[INFO] AGREE modal detected")
+
+        # Step 3: Check AGREE checkbox
+        agree_checkbox_locators = [
+            (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"),
+            (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']"),
+            (By.XPATH, "//label[contains(text(), 'I agree')]/preceding-sibling::input[@type='checkbox']"),
+            (By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//span[contains(text(), 'I agree')]/preceding-sibling::input[@type='checkbox']"),
+        ]
+
+        agree_checkbox = None
+        for by, value in agree_checkbox_locators:
+            agree_checkbox = safe_find(driver, by, value, timeout=10, description="AGREE checkbox")
+            if agree_checkbox:
+                break
+
+        if agree_checkbox:
+            # Ensure the checkbox is visible and scroll into view
+            driver.execute_script("arguments[0].scrollIntoView(true);", agree_checkbox)
+            time.sleep(1)  # Brief wait for scroll to complete
+
+            try:
+                # Attempt to click normally
+                agree_checkbox.click()
+                print("[INFO] Checked AGREE checkbox with normal click")
+            except Exception as e:
+                print(f"[ERROR] Normal click failed: {e}, using JavaScript")
+                driver.execute_script("arguments[0].click();", agree_checkbox)
+                print("[INFO] Checked AGREE checkbox with JavaScript")
+
+            driver.save_screenshot(f"{screenshot_dir}/agree_checked.png")
+        else:
+            print("[ERROR] AGREE checkbox not found")
+            driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
+            return False
+
+        # Step 4: Click Confirm button with retry
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            confirm_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//button[contains(translate(text(), 'CONFIRM', 'confirm'), 'confirm')]", 10, "Confirm button")
+            if confirm_button:
+                confirm_button.click()
+                print(f"[INFO] Clicked Confirm button on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
+                break
+            else:
+                print(f"[ERROR] Confirm button not found on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/confirm_not_found_{attempt + 1}.png")
+                if attempt < max_attempts - 1:
+                    time.sleep(2)  # Wait before retry
+        else:
+            print("[ERROR] Failed to find Confirm button after all attempts")
+            driver.save_screenshot(f"{screenshot_dir}/confirm_not_found.png")
+            return False
+
+        # Wait for booking confirmation
         try:
-            parent = target_sunday.find_element(By.XPATH, "./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]")
-            reserve_button = parent.find_element(By.XPATH, ".//button[contains(text(), 'reserve')]")
-            if reserve_button and not self.is_disabled(reserve_button):
-                reserve_button.click()
-                self.log("Clicked first reserve button")
-                self.take_screenshot("first_reserve_clicked.png")
+            WebDriverWait(driver, 20).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]")),
+                    EC.url_contains("confirmation")
+                )
+            )
+            print("[SUCCESS] Booking confirmed")
+            driver.save_screenshot(f"{screenshot_dir}/booking_confirmed.png")
+            return True
+        except TimeoutException:
+            try:
+                alert = driver.switch_to.alert
+                alert.accept()
+                print("[INFO] Handled alert for booking confirmation")
+                driver.save_screenshot(f"{screenshot_dir}/booking_alert_handled.png")
                 return True
-        except NoSuchElementException:
-            pass
-        self.log("Reserve button not found or disabled", "ERROR")
-        self.take_screenshot("reserve_not_found.png")
+            except NoAlertPresentException:
+                print("[ERROR] No confirmation or alert found after Confirm click")
+                driver.save_screenshot(f"{screenshot_dir}/booking_failed.png")
+                return False
+
+    except Exception as e:
+        print(f"[ERROR] Booking failed: {e}\n{traceback.format_exc()}")
+        driver.save_screenshot(f"{screenshot_dir}/booking_error.png")
         return False
 
-    def handle_agree_and_confirm(self):
-        try:
-            WebDriverWait(self.driver, self.TIMEOUT_SHORT).until(
-                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']"))
-            )
-            checkbox = self.safe_find(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox']", self.TIMEOUT_SHORT, "AGREE checkbox")
-            if checkbox:
-                self.driver.execute_script("arguments[0].click();", checkbox)
-                self.log("Checked AGREE checkbox")
-                self.take_screenshot("agree_checked.png")
-
-                confirm_button = self.safe_find(By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//button[contains(translate(text(), 'CONFIRM', 'confirm'), 'confirm')]", self.TIMEOUT_SHORT, "Confirm button")
-                if confirm_button:
-                    confirm_button.click()
-                    self.log("Clicked Confirm button")
-                    self.take_screenshot("confirm_clicked.png")
-                    return True
-            return False
-        except TimeoutException:
-            self.log("AGREE modal not found", "ERROR")
-            self.take_screenshot("agree_not_found.png")
-            return False
-
-    def is_disabled(self, element):
-        return element.get_attribute("disabled") or "disabled" in element.get_attribute("class").lower()
-
-    def find_first_valid(self, locators, description):
-        for by, value in locators:
-            el = self.safe_find(by, value, description=description)
-            if el:
-                return el
-        return None
-
-    def take_screenshot(self, name):
-        path = os.path.join(self.screenshot_dir, name)
-        self.driver.save_screenshot(path)
-        self.log(f"Screenshot saved: {path}")
-
-    def log_exception(self, e, context="Error"):
-        self.log(f"{context}: {e}\n{traceback.format_exc()}", "ERROR")
-        self.take_screenshot(f"{context.replace(' ', '_').lower()}.png")
-
-    def run(self):
-        try:
-            self.init_driver()
-            if self.try_login():
-                if self.book_parking_with_retry():
-                    self.log("Parking booked successfully", "SUCCESS")
-                else:
-                    self.log("Failed to book parking", "ERROR")
+# Main execution
+def main():
+    global screenshot_dir
+    screenshot_dir = f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%SS')}"
+    os.makedirs(screenshot_dir, exist_ok=True)
+    driver = None
+    try:
+        email, password = load_environment()
+        driver = init_driver()
+        if try_login(driver, email, password):
+            if book_parking(driver):
+                print("[SUCCESS] Parking booked successfully")
             else:
-                self.log("Login failed", "ERROR")
-        except Exception as e:
-            self.log_exception(e, "Unexpected error")
-        finally:
-            if self.driver:
-                self.driver.quit()
-                self.log("ChromeDriver closed")
-
+                print("[ERROR] Failed to book parking")
+        else:
+            print("[ERROR] Login failed")
+    except Exception as e:
+        print(f"[ERROR] Unexpected error: {e}\n{traceback.format_exc()}")
+        if driver:
+            driver.save_screenshot(f"{screenshot_dir}/main_error.png")
+    finally:
+        if driver:
+            driver.quit()
+            print("[INFO] ChromeDriver closed")
 
 if __name__ == "__main__":
-    bot = ParkalotBot(max_booking_attempts=3, retry_delay=30)
-    bot.run()
+    main()
