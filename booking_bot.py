@@ -141,7 +141,7 @@ def try_login(driver, email, password, max_attempts=2):
     driver.save_screenshot(f"{screenshot_dir}/login_failed.png")
     return False
 
-# Check AGREE checkbox (updated function)
+# Check AGREE checkbox
 def check_agree_checkbox(driver, screenshot_dir):
     print("[INFO] Waiting for AGREE modal to fully load")
     time.sleep(5)  # Initial delay to ensure modal rendering
@@ -292,7 +292,7 @@ def check_agree_checkbox(driver, screenshot_dir):
     print("[ERROR] Please ensure the checkbox is visible and tickable, then restart the script or adjust the methods list.")
     return False
 
-# Book parking for the next available Sunday
+# Book parking for the next Sunday
 def book_parking(driver):
     try:
         WebDriverWait(driver, 25).until(
@@ -303,10 +303,20 @@ def book_parking(driver):
         print("[INFO] Dashboard loaded")
         driver.save_screenshot(f"{screenshot_dir}/dashboard.png")
 
+        # Calculate the next Sunday
         today = datetime.now()
-        target_dates = [today + timedelta(days=i * 7) for i in range(3)]
-        target_dates = [d for d in target_dates if d >= today]
+        days_until_sunday = (6 - today.weekday()) % 7 or 7  # Ensure next Sunday (7 days if today is Sunday)
+        next_sunday = today + timedelta(days=days_until_sunday)
+        target_date_str = next_sunday.strftime("%Y-%m-%d")
+        alt_date_formats = [
+            next_sunday.strftime("%B %d, %Y"),
+            next_sunday.strftime("%d/%m/%Y"),
+            next_sunday.strftime("%d %b %Y"),
+            next_sunday.strftime("%b %d, %Y"),
+            next_sunday.strftime("%Y.%m.%d")
+        ]
 
+        # Find Sunday elements
         sunday_elements = driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday') and contains(@style, 'font-size: 24px')]")
         if not sunday_elements:
             print("[ERROR] No Sunday elements found")
@@ -315,37 +325,36 @@ def book_parking(driver):
 
         print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
         target_sunday = None
-        for target_date in target_dates:
-            target_date_str = target_date.strftime("%Y-%m-%d")
-            alt_date_str = target_date.strftime("%B %d, %Y")
-            alt_date_str2 = target_date.strftime("%d/%m/%Y")
-            alt_date_str3 = target_date.strftime("%d %b %Y")
-
-            for sunday in sunday_elements:
-                try:
-                    date_element = sunday.find_element(By.XPATH, "./preceding-sibling::* | ./parent::*//span | ./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]//span[contains(@class, 'pull-left')]")
-                    date_text = date_element.text.strip()
-                    date_element_html = date_element.get_attribute("outerHTML")
-                    print(f"[DEBUG] Sunday date element: {date_element_html}, Text: {date_text}, Target: {target_date_str}")
-                    if any(fmt in date_text for fmt in [target_date_str, alt_date_str, alt_date_str2, alt_date_str3]):
-                        target_sunday = sunday
-                        print(f"[INFO] Selected Sunday: {date_text} for {target_date_str}")
-                        break
-                except NoSuchElementException:
-                    print("[INFO] No date found for Sunday element")
-                if target_sunday:
+        for sunday in sunday_elements:
+            try:
+                date_element = sunday.find_element(By.XPATH, "./preceding-sibling::* | ./parent::*//span | ./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]//span[contains(@class, 'pull-left')]")
+                date_text = date_element.text.strip()
+                date_element_html = date_element.get_attribute("outerHTML")
+                print(f"[DEBUG] Sunday date element: {date_element_html}, Text: {date_text}, Target: {target_date_str}")
+                if any(fmt in date_text for fmt in [target_date_str] + alt_date_formats):
+                    target_sunday = sunday
+                    print(f"[INFO] Selected Sunday: {date_text} for {target_date_str}")
                     break
-            if target_sunday:
-                break
+            except NoSuchElementException:
+                print("[INFO] No date found for Sunday element")
+                continue
 
         if not target_sunday:
-            print(f"[ERROR] No matching Sunday element found for any date in lookahead")
-            print("[INFO] Falling back to first Sunday element")
+            print(f"[WARN] No matching Sunday element found for {target_date_str}, falling back to first Sunday")
             target_sunday = sunday_elements[0] if sunday_elements else None
             if not target_sunday:
+                print("[ERROR] No Sunday elements available")
                 driver.save_screenshot(f"{screenshot_dir}/sunday_not_found.png")
                 return False
+            try:
+                date_element = target_sunday.find_element(By.XPATH, "./preceding-sibling::* | ./parent::*//span | ./ancestor::div[contains(@class, 'r-t') or contains(@class, 'lter-2')]//span[contains(@class, 'pull-left')]")
+                print(f"[INFO] Fallback Sunday date: {date_element.text.strip()}")
+            except:
+                print("[INFO] Fallback Sunday selected (date not found)")
 
+        driver.save_screenshot(f"{screenshot_dir}/selected_sunday.png")
+
+        # Reserve button locators
         reserve_button_locators = [
             (By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"),
             (By.CSS_SELECTOR, "button.md-btn.md-flat.m-r"),
@@ -455,8 +464,9 @@ def book_parking(driver):
         try:
             WebDriverWait(driver, 20).until(
                 EC.any_of(
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful')]")),
-                    EC.url_contains("confirmation")
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booking Confirmed') or contains(text(), 'Reservation Successful') or contains(text(), 'Success')]")),
+                    EC.url_contains("confirmation"),
+                    EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'success')]"))
                 )
             )
             print("[SUCCESS] Booking confirmed")
@@ -472,12 +482,28 @@ def book_parking(driver):
             except NoAlertPresentException:
                 print("[ERROR] No confirmation or alert found after Confirm click")
                 driver.save_screenshot(f"{screenshot_dir}/booking_failed.png")
+                with open(f"{screenshot_dir}/page_source.html", "w") as f:
+                    f.write(driver.page_source)
                 return False
 
     except Exception as e:
         print(f"[ERROR] Booking failed: {e}\n{traceback.format_exc()}")
         driver.save_screenshot(f"{screenshot_dir}/booking_error.png")
+        with open(f"{screenshot_dir}/error_page_source.html", "w") as f:
+            f.write(driver.page_source)
         return False
+
+# Schedule execution for 20:00
+def wait_until_8pm():
+    now = datetime.now()
+    target_time = now.replace(hour=20, minute=0, second=0, microsecond=0)
+    if now > target_time:
+        target_time += timedelta(days=1)  # Schedule for 20:00 tomorrow if already past
+    seconds_to_wait = (target_time - now).total_seconds()
+    if seconds_to_wait > 0:
+        print(f"[INFO] Waiting {seconds_to_wait:.0f} seconds until 20:00")
+        time.sleep(seconds_to_wait)
+    print(f"[INFO] Starting execution at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # Main execution
 def main():
@@ -486,11 +512,15 @@ def main():
     os.makedirs(screenshot_dir, exist_ok=True)
     driver = None
     try:
+        # Wait until 20:00
+        wait_until_8pm()
         email, password = load_environment()
         driver = init_driver()
         if try_login(driver, email, password):
             if book_parking(driver):
-                print("[SUCCESS] Parking booked successfully")
+                print("[SUCCESS] Parking booked successfully for next Sunday")
+                print("[INFO] Executing additional step...")
+                # Placeholder for additional step
             else:
                 print("[ERROR] Failed to book parking")
         else:
