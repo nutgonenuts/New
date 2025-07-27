@@ -56,7 +56,7 @@ def safe_find(driver, by, value, timeout=20, description="element"):
         print(f"[INFO] Found {description}: {value}")
         return element
     except TimeoutException:
-        print(f"[ERROR] Timeout waiting for {description]: {value}")
+        print(f"[ERROR] Timeout waiting for {description}: {value}")
         return None
 
 # Login to Parkalot
@@ -287,14 +287,22 @@ def book_parking(driver):
             driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
             return False
 
-        # Step 4: Click Confirm button
-        confirm_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//button[contains(translate(text(), 'CONFIRM', 'confirm'), 'confirm')]", 10, "Confirm button")
-        if confirm_button:
-            confirm_button.click()
-            print("[INFO] Clicked Confirm button")
-            driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
+        # Step 4: Click Confirm button with retry
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            confirm_button = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//button[contains(translate(text(), 'CONFIRM', 'confirm'), 'confirm')]", 10, "Confirm button")
+            if confirm_button:
+                confirm_button.click()
+                print(f"[INFO] Clicked Confirm button on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/confirm_clicked.png")
+                break
+            else:
+                print(f"[ERROR] Confirm button not found on attempt {attempt + 1}")
+                driver.save_screenshot(f"{screenshot_dir}/confirm_not_found_{attempt + 1}.png")
+                if attempt < max_attempts - 1:
+                    time.sleep(2)  # Wait before retry
         else:
-            print("[ERROR] Confirm button not found")
+            print("[ERROR] Failed to find Confirm button after all attempts")
             driver.save_screenshot(f"{screenshot_dir}/confirm_not_found.png")
             return False
 
