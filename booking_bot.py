@@ -11,8 +11,8 @@ def book_parking(driver):
 
         # Calculate target Sundays for 2-week lookahead
         today = datetime.now()
-        target_dates = [today + timedelta(days=i * 7) for i in range(3)]  # Today + 2 more Sundays (2 weeks)
-        target_dates = [d for d in target_dates if d >= today]  # Ensure no past dates
+        target_dates = [today + timedelta(days=i * 7) for i in range(3)]  # Today + 2 more Sundays
+        target_dates = [d for d in target_dates if d >= today]
 
         sunday_elements = driver.find_elements(By.XPATH, "//span[contains(text(), 'Sunday') and contains(@style, 'font-size: 24px')]")
         if not sunday_elements:
@@ -23,10 +23,10 @@ def book_parking(driver):
         print(f"[INFO] Found {len(sunday_elements)} Sunday elements")
         target_sunday = None
         for target_date in target_dates:
-            target_date_str = target_date.strftime("%Y-%m-%d")  # e.g., 2025-07-27
-            alt_date_str = target_date.strftime("%B %d, %Y")   # e.g., July 27, 2025
-            alt_date_str2 = target_date.strftime("%d/%m/%Y")   # e.g., 27/07/2025
-            alt_date_str3 = target_date.strftime("%d %b %Y")   # e.g., 27 Jul 2025
+            target_date_str = target_date.strftime("%Y-%m-%d")
+            alt_date_str = target_date.strftime("%B %d, %Y")
+            alt_date_str2 = target_date.strftime("%d/%m/%Y")
+            alt_date_str3 = target_date.strftime("%d %b %Y")
 
             for sunday in sunday_elements:
                 try:
@@ -80,7 +80,6 @@ def book_parking(driver):
             driver.save_screenshot(f"{screenshot_dir}/reserve_not_found.png")
             return False
 
-        # Check for no spaces available before clicking
         if driver.find_elements(By.XPATH, "//*[contains(text(), 'No spaces available') or contains(text(), 'Fully booked')]"):
             print("[ERROR] No parking spaces available for this Sunday")
             driver.save_screenshot(f"{screenshot_dir}/no_spaces_available.png")
@@ -90,18 +89,24 @@ def book_parking(driver):
         print("[INFO] Clicked first reserve button")
         driver.save_screenshot(f"{screenshot_dir}/first_reserve_clicked.png")
 
-        # Wait for second reserve option to appear with modal handling
+        # Step 2: Wait for second reserve option and handle modal
         try:
             WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.XPATH, "//button[@type='button' and contains(@class, 'md-btn') and contains(text(), 'reserve')]"))
             )
-            # Wait for modal overlay to disappear
-            WebDriverWait(driver, 10).until_not(
-                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'modal black-overlay')]"))
-            )
-            print("[INFO] Second reserve option detected and modal handled")
+            # Try to close any modal overlay
+            try:
+                modal_close = driver.find_element(By.XPATH, "//div[contains(@class, 'modal black-overlay')]//button[contains(@class, 'close')]")
+                modal_close.click()
+                WebDriverWait(driver, 5).until_not(
+                    EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'modal black-overlay')]"))
+                )
+                print("[INFO] Closed modal overlay")
+            except NoSuchElementException:
+                print("[INFO] No modal overlay found to close")
+            print("[INFO] Second reserve option detected")
         except TimeoutException:
-            print("[ERROR] Second reserve option or modal handling timed out")
+            print("[ERROR] Second reserve option timed out")
             driver.save_screenshot(f"{screenshot_dir}/second_reserve_timeout.png")
             return False
 
@@ -135,10 +140,10 @@ def book_parking(driver):
         print("[INFO] Clicked second reserve button")
         driver.save_screenshot(f"{screenshot_dir}/second_reserve_clicked.png")
 
-        # Wait for AGREE modal with increased timeout and retry
-        max_attempts = 2
+        # Step 3: Wait for AGREE modal with retry
+        max_attempts = 3
         for attempt in range(max_attempts):
-            agree_checkbox = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]", 15, "AGREE checkbox")
+            agree_checkbox = safe_find(driver, By.XPATH, "//div[contains(@class, 'MuiDialog-root')]//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]", 20, "AGREE checkbox")
             if agree_checkbox:
                 driver.execute_script("arguments[0].click();", agree_checkbox)
                 print(f"[INFO] Checked AGREE checkbox on attempt {attempt + 1}")
@@ -148,7 +153,7 @@ def book_parking(driver):
                 print(f"[ERROR] AGREE checkbox not found on attempt {attempt + 1}")
                 driver.save_screenshot(f"{screenshot_dir}/agree_not_found_{attempt + 1}.png")
                 if attempt < max_attempts - 1:
-                    time.sleep(2)  # Wait before retry
+                    time.sleep(3)  # Increased wait between retries
         else:
             print("[ERROR] Failed to find AGREE checkbox after all attempts")
             driver.save_screenshot(f"{screenshot_dir}/agree_not_found.png")
@@ -167,7 +172,7 @@ def book_parking(driver):
                 print(f"[ERROR] Confirm button not found on attempt {attempt + 1}")
                 driver.save_screenshot(f"{screenshot_dir}/confirm_not_found_{attempt + 1}.png")
                 if attempt < max_attempts - 1:
-                    time.sleep(2)  # Wait before retry
+                    time.sleep(2)
         else:
             print("[ERROR] Failed to find Confirm button after all attempts")
             driver.save_screenshot(f"{screenshot_dir}/confirm_not_found.png")
