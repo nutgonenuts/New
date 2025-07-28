@@ -1,65 +1,33 @@
-name: Run Booking Bot
+name: Test Parking Booking
 on:
-  workflow_dispatch:  # Allow manual triggers
+  push:
   schedule:
-    - cron: "45 20 * * 0"  # Run at 20:45 UTC = 21:45 BST every Sunday
+    - cron: "0 0 * * *"  # Run daily
 jobs:
-  booking:
+  test-booking:
     runs-on: ubuntu-latest
-    env:
-      EMAIL: ${{ secrets.EMAIL }}
-      PASSWORD: ${{ secrets.PASSWORD }}
     steps:
-      # --- STEP 1: Checkout Repository ---
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      # --- STEP 2: Set Up Python ---
+      - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-      # --- STEP 3: Install Dependencies ---
-      - name: Install Python dependencies
+          python-version: "3.11"
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install selenium python-dotenv chromedriver-autoinstaller
-      # --- STEP 4: Debug Secrets ---
-      - name: Debug Secrets
-        run: |
-          if [ -z "$EMAIL" ]; then
-            echo "::error::EMAIL is not set!"
-            exit 1
-          fi
-          if [ -z "$PASSWORD" ]; then
-            echo "::error::PASSWORD is not set!"
-            exit 1
-          fi
-          echo "[DEBUG] EMAIL and PASSWORD are set (hidden)."
-      # --- STEP 5: Run Booking Bot ---
-      - name: Run booking bot
-        run: |
-          mkdir -p screenshots
-          for i in {1..3}; do
-            python booking_bot.py 2>&1 | tee booking_bot.log && break
-            echo "Attempt $i failed, retrying..."
-            sleep 10
-          done
-        continue-on-error: true
-      # --- STEP 6: Upload Screenshots ---
-      - name: Upload screenshots
-        if: always()
+          pip install selenium webdriver-manager chromedriver-autoinstaller python-dotenv
+      - name: Run booking script
+        env:
+          EMAIL: ${{ secrets.EMAIL }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+        run: python booking_script.py
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: booking-screenshots
           path: screenshots/
-          if-no-files-found: warn
-      # --- STEP 7: Upload Log ---
-      - name: Upload log
-        if: always()
+      - name: Upload logs
         uses: actions/upload-artifact@v4
         with:
           name: booking-bot-log
-          path: |
-            booking_bot.log
-            screenshots/*.html
-            logs/*.log
+          path: screenshots/*.html
