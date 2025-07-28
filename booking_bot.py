@@ -185,12 +185,13 @@ def book_parking(driver, screenshot_dir):
         today = datetime.now()
         days_until_sunday = (6 - today.weekday()) % 7 or 7
         next_sunday = today + timedelta(days=days_until_sunday)
-        target_date_str = next_sunday.strftime("%d<%small><%sup>%s</%sup></%small> %B")  # e.g., "3<sup>rd</sup> August"
-        target_date_str = target_date_str.replace("<%small>", "<small>").replace("<%sup>", "<sup>").replace("</%sup>", "</sup>").replace("</%small>", "</small>")
-        alt_date_formats = [
-            next_sunday.strftime("%-d %B"),  # e.g., "3 August"
-            next_sunday.strftime("%d %B"),   # e.g., "03 August"
-        ]
+        # Correctly format the date with ordinal suffix
+        day = next_sunday.day
+        if 4 <= day % 100 <= 20:
+            suffix = "th"
+        else:
+            suffix = ["th", "st", "nd", "rd"][min(day % 10, 4)]
+        target_date_str = f"{day}<small><sup>{suffix}</sup></small> {next_sunday.strftime('%B')}"
         print(f"[DEBUG] Targeting Sunday: {target_date_str}")
 
         # Find all day elements
@@ -215,7 +216,7 @@ def book_parking(driver, screenshot_dir):
                 })
 
                 # Check if this is the target Sunday
-                if day_name.lower() == "sunday" and any(fmt in date for fmt in [target_date_str] + alt_date_formats):
+                if day_name.lower() == "sunday" and target_date_str in date:
                     target_sunday = elem
                     print(f"[INFO] Selected Sunday: {date}")
                     break
