@@ -1,9 +1,7 @@
 name: Run Booking Bot
 
 on:
-  workflow_dispatch:  # Allow manual triggers
-  schedule:
-    - cron: "0 19 * * 1-5"  # Run at 7:00 PM UTC (8:00 PM BST) Monday-Friday
+  workflow_dispatch:  # Allow manual triggers only
 
 jobs:
   booking:
@@ -28,7 +26,7 @@ jobs:
       - name: Install Google Chrome
         run: |
           sudo apt-get update
-          sudo apt-get install -Uncategorized -y google-chrome-stable
+          sudo apt-get install -y google-chrome-stable
           google-chrome --version
 
       # --- STEP 4: Install Python Dependencies ---
