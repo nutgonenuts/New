@@ -27,15 +27,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
-          google-chrome --version
+          google-chrome --version || echo "::error::Chrome installation failed"
+          echo "Chrome version: $(google-chrome --version)"
 
       # --- STEP 4: Install Python Dependencies ---
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install selenium chromedriver-autoinstaller python-dotenv
+          pip list
 
-      # --- STEP 5: Debug Secrets ---
+      # --- STEP 5: Debug Environment ---
+      - name: Debug Environment
+        run: |
+          echo "Current environment variables:"
+          printenv | grep -E 'EMAIL|PASSWORD'
+          echo "Working directory: $(pwd)"
+          ls -la
+
+      # --- STEP 6: Debug Secrets ---
       - name: Debug Secrets
         run: |
           if [ -z "$EMAIL" ]; then
@@ -48,14 +58,16 @@ jobs:
           fi
           echo "[DEBUG] EMAIL and PASSWORD are set (hidden)."
 
-      # --- STEP 6: Run Booking Bot ---
+      # --- STEP 7: Run Booking Bot ---
       - name: Run booking bot
         run: |
           mkdir -p screenshots
           python booking_bot.py 2>&1 | tee booking_bot.log
-          exit ${{ $? }}
+          exit_code=$?
+          echo "Script exited with code: $exit_code"
+          exit $exit_code
 
-      # --- STEP 7: Upload Screenshots ---
+      # --- STEP 8: Upload Screenshots ---
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
@@ -63,7 +75,7 @@ jobs:
           path: screenshots/
           if-no-files-found: warn
 
-      # --- STEP 8: Upload Log ---
+      # --- STEP 9: Upload Log ---
       - name: Upload log
         uses: actions/upload-artifact@v4
         if: always()
