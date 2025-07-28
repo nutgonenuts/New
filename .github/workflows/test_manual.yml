@@ -1,33 +1,74 @@
-name: Test Parking Booking
+name: Run Booking Bot
+
 on:
-  push:
+  workflow_dispatch:  # Allow manual triggers
   schedule:
-    - cron: "0 0 * * *"  # Run daily
+    - cron: "0 19 * * 1-5"  # Run at 7:00 PM UTC (8:00 PM BST) Monday-Friday
+
 jobs:
-  test-booking:
+  booking:
     runs-on: ubuntu-latest
+
+    env:
+      EMAIL: ${{ secrets.EMAIL }}
+      PASSWORD: ${{ secrets.PASSWORD }}
+
     steps:
-      - uses: actions/checkout@v4
+      # --- STEP 1: Checkout Repository ---
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- STEP 2: Set Up Python ---
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: Install dependencies
+          python-version: '3.11'
+
+      # --- STEP 3: Install Google Chrome ---
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -Uncategorized -y google-chrome-stable
+          google-chrome --version
+
+      # --- STEP 4: Install Python Dependencies ---
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install selenium webdriver-manager chromedriver-autoinstaller python-dotenv
-      - name: Run booking script
-        env:
-          EMAIL: ${{ secrets.EMAIL }}
-          PASSWORD: ${{ secrets.PASSWORD }}
-        run: python booking_script.py
-      - name: Upload artifacts
+          pip install selenium chromedriver-autoinstaller python-dotenv
+
+      # --- STEP 5: Debug Secrets ---
+      - name: Debug Secrets
+        run: |
+          if [ -z "$EMAIL" ]; then
+            echo "::error::EMAIL is not set!"
+            exit 1
+          fi
+          if [ -z "$PASSWORD" ]; then
+            echo "::error::PASSWORD is not set!"
+            exit 1
+          fi
+          echo "[DEBUG] EMAIL and PASSWORD are set (hidden)."
+
+      # --- STEP 6: Run Booking Bot ---
+      - name: Run booking bot
+        run: |
+          mkdir -p screenshots
+          python booking_bot.py 2>&1 | tee booking_bot.log
+          exit ${{ $? }}
+
+      # --- STEP 7: Upload Screenshots ---
+      - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
           name: booking-screenshots
           path: screenshots/
-      - name: Upload logs
+          if-no-files-found: warn
+
+      # --- STEP 8: Upload Log ---
+      - name: Upload log
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: booking-bot-log
-          path: screenshots/*.html
+          path: booking_bot.log
